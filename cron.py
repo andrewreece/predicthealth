@@ -344,10 +344,11 @@ def count_days_from_turning_point(conn, condition, medium_abbr):
 
 	table_name = 'meta_'+medium_abbr
 
-	query = ("SELECT DISTINCT platform, username, diag_day, diag_monthnum, diag_year, days_suspected " + 
+	query = ("SELECT DISTINCT platform, {cond}.username, diag_day, diag_monthnum, diag_year, days_suspected ".format(cond=condition) + 
 			 "FROM {cond} INNER JOIN {posts} ".format(cond=condition, posts=table_name) + 
 			 "WHERE ({cond}.uid_usernames = {posts}.uid) AND {cond}.username is not null AND {cond}.diag_year is not null AND {posts}.d_from_diag_{cond} is null".format(cond=condition, posts=table_name)
 			)
+
 	with conn:
 		cur = conn.cursor()
 		cur.execute(query)
@@ -385,7 +386,8 @@ def count_days_from_turning_point(conn, condition, medium_abbr):
 					print "Writing count days for condition: {} | turning point: {}".format(condition,date_type)
 					# count number of days difference between post and diag/susp date
 					# -int = post date is earlier than diag/susp date, +int=later
-					query = "UPDATE {table} SET d_from_{date_type}_{cond}=julianday('{date}')-julianday(created_date) WHERE username='{uname}'".format(table=table_name,cond=condition,date=dates[date_type],date_type=date_type,uname=uname)
+					# we get this number by subtracting the diagnosis/suspected date from the current date.
+					query = "UPDATE {table} SET d_from_{date_type}_{cond}=julianday(created_date)-julianday('{date}') WHERE username='{uname}'".format(table=table_name,cond=condition,date=dates[date_type],date_type=date_type,uname=uname)
 					
 					with conn:
 						cur = conn.cursor()
