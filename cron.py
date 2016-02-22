@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np 
-import re, datetime
+import re, datetime, os
 from dateutil import parser
 from os.path import join, dirname
 from dotenv import load_dotenv
@@ -145,6 +145,11 @@ def clean_qualtrics_data(data, condition):
 	# apply "updated" name conversion
 	data.columns = [updated[col] if col in updated.keys() else col for col in data.columns]
 
+	if ("username_tw" in data.columns) and (data.username_tw is not None):
+		data['username'] = data.username_tw
+	elif ("username_ig" in data.columns) and (data.username_ig is not None):
+		data['username'] = data.username_ig 
+
 	# consolidate all possible username fields into two (one for insta, one for twitter)
 	#data["username_ig"] = data["username_ig_mturk"]
 	try:
@@ -160,8 +165,22 @@ def clean_qualtrics_data(data, condition):
 		except:
 			pass
 
+def get_uid(uname, conn):
+
+	query = "select uid from usernames where username='{}'".format(uname)
+	with conn:
+		cur = conn.cursor()
+		cur.execute(query)
+	try: 
+		return cur.fetchone()[0]
+	except Exception,e:
+		return ''
+
 def write_data_to_study_db(conn, data, condition, start_after):
 	''' Writes cleaned survey data to SQLite study-specific databases '''
+
+	uid_unames = data.username.apply(get_uid, args=(conn,)) 
+	data['uid_usernames'] = uid_unames if uid_unames is not None else ''
 
 	fields = tuple(data.columns)
 	vals = [tuple(row) for row in data.values]
@@ -321,7 +340,62 @@ def add_monthnum(conn):
 		print "Condition: {} | Converted {} months to monthnum".format(condition,ct)
 
 
-def count_days_from_turning_point(conn):
+def count_days_from_turning_point(conn, condition, medium_abbr):
+
+	table_name = 'meta_'+medium_abbr
+
+	query = ("SELECT DISTINCT platform, username, diag_day, diag_monthnum, diag_year, days_suspected " + 
+			 "FROM {cond} INNER JOIN {posts} ".format(cond=condition, posts=table_name) + 
+			 "WHERE ({cond}.uid_usernames = {posts}.uid) AND {cond}.username is not null AND {cond}.diag_year is not null AND {posts}.d_from_diag_{cond} is null".format(cond=condition, posts=table_name)
+			)
+	with conn:
+		cur = conn.cursor()
+		cur.execute(query)
+		rows = cur.fetchall()
+	print 
+	print
+	print "CONDITION: {}".format(condition)
+
+	params = []
+	for r in rows:
+		platform, uname, day, month, year, dsusp = r
+		month = '0'+str(month) if len(str(month))==1 else month
+		day = '0'+str(day) if len(str(day))==1 else day 
+		dates = {}
+		ddate = '-'.join([str(year),str(month),str(day)])
+		dates['diag'] = ddate
+
+		try:
+			ddate_obj = parser.parse(ddate)
+		except Exception, e:
+			print str(e)
+			print 'Problem with date for {} user: {}, date = {}'.format(medium_abbr, uname, ddate) 
+
+		# if days suspected is '60+', we enter a None value, otherwise compute the suspected date
+		if dsusp and str(dsusp)[-1]!='+':
+			sdate_obj = ddate_obj - datetime.timedelta(days=dsusp)
+			dates['susp'] = sdate_obj.strftime('%Y-%m-%d')
+		else:
+			dates['susp'] = None
+	
+		for date_type in ['diag','susp']:
+			try:
+				if dates[date_type] is not None:
+					print
+					print "Writing count days for condition: {} | turning point: {}".format(condition,date_type)
+					# count number of days difference between post and diag/susp date
+					# -int = post date is earlier than diag/susp date, +int=later
+					query = "UPDATE {table} SET d_from_{date_type}_{cond}=julianday('{date}')-julianday(created_date) WHERE username='{uname}'".format(table=table_name,cond=condition,date=dates[date_type],date_type=date_type,uname=uname)
+					
+					with conn:
+						cur = conn.cursor()
+						cur.execute(query)
+					conn.commit()
+					print 'Commit complete for {} [TABLE: {}, COND: {}, DTYPE: {}]'.format(uname, table_name, condition, date_type)
+			except Exception,e:
+				print 'Error in writing count days for condition: {} | turning point: {} [ERROR: {}]'.format(condition,date_type,str(e))
+
+def count_days_from_turning_point_wrapper(conn):
 	''' Counts the number of days from turning point (either diagnosis or suspected date) for each social media
 		post, for a given user and a given condition.  
 		- Values of counts are +/- integers (-X = X days before turning point, +X = X days after turning point)
@@ -330,68 +404,16 @@ def count_days_from_turning_point(conn):
 		  (so might be more rows than the most recent batch of survey respondents) '''
 
 	conditions = ['pregnancy','cancer','ptsd','depression']
-
 	for condition in conditions:
-		query = ("SELECT platform, username_tw, username_ig, diag_day, diag_monthnum, diag_year, days_suspected " + 
-				 "FROM {} ".format(condition) + 
-				 "WHERE ({cond}.username_tw is not null OR {cond}.username_ig is not null) AND ({cond}.diag_year is not null) AND (d_from_{cond}_pregnancy is null AND d_from_{cond}_depression is null AND d_from_{cond}_cancer is null AND d_from_{cond}_ptsd is null)".format(cond=condition)
-				 )
-		with conn:
-			cur = conn.cursor()
-			cur.execute(query)
-			rows = cur.fetchall()
-		print 
-		print
-		print "CONDITION: {}".format(condition)
-		params = []
-		for r in rows:
-			platform, utw, uig, day, month, year, dsusp = r
-			month = '0'+str(month) if len(str(month))==1 else month
-			day = '0'+str(day) if len(str(day))==1 else day 
-			dates = {}
-			ddate = '-'.join([str(year),str(month),str(day)])
-			dates['diag'] = ddate
-			try:
-				ddate_obj = parser.parse(ddate)
-			except Exception, e:
-				print str(e)
-				print 'Problem with date for user: tw: {} ig: {}, date = {}'.format(utw, uig,ddate) 
-			if dsusp and str(dsusp)[-1]!='+':
-				sdate_obj = ddate_obj - datetime.timedelta(days=dsusp)
-				dates['susp'] = sdate_obj.strftime('%Y-%m-%d')
-			else:
-				dates['susp'] = None
-			if utw:
-				table_name = 'meta_tw'
-				field_name = 'username_tw'
-				uname = utw
-			elif uig:
-				table_name = 'meta_ig'
-				field_name = 'username_ig'
-				uname = uig
-			else:
-				table_name = None
-			if table_name:
-				for date_type in ['diag','susp']:
-					if dates[date_type] is not None:
-						print
-						print "Writing count days for condition: {} | turning point: {}".format(condition,date_type)
-						# count number of days difference between post and diag/susp date
-						# -int = post date is earlier than diag/susp date, +int=later
-						query = "UPDATE {table} SET d_from_{date_type}_{cond}=julianday('{date}')-julianday(created_date) WHERE username='{uname}'".format(table=table_name,cond=condition,date=dates[date_type],date_type=date_type,uname=uname)
-						
-						with conn:
-							cur = conn.cursor()
-							cur.execute(query)
-						conn.commit()
-						print 'Commit complete for {} [TABLE: {}, COND: {}, DTYPE: {}]'.format(uname, table_name, condition, date_type)
+		for medium in ['tw','ig']:
+			count_days_from_turning_point(conn, condition, medium)
 
 if __name__ == '__main__':
 	conn = util.connect_db()
 	add_survey_data(conn)
 	collect(conn)
 	add_monthnum(conn)
-	count_days_from_turning_point(conn)
+	count_days_from_turning_point_wrapper(conn)
 
 
 	
