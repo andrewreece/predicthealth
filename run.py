@@ -162,71 +162,6 @@ def verify2(medium, uname):
 		return str(e)
 
 
-#Called by qualtrics survey for photo raters, gets instagram photos to be rated
-#- selects from urls which have not been rated at least N times (currently N=3)
-#- upon successful completion of rating survey, N is incremented by 1 for each photo rated
-#- photo urls are found in meta_ig '''
-@app.route("/getphoto")
-@nocache
-def get_photo():
-	try:
-		conn = util.connect_db()
-		#data_directory = "/home/dharmahound/research.andrewgarrettreece.com/data/"
-		query_file = data_directory+"photo_ratings_queries.json"
-		med = "ig"
-		med_long = "instagram"
-		table = "meta_"+med
-		condition = "depression" # eventually we'll want to sample from all conditions
-		cesd_cutoff = 22 # as per DeChoudhury et al 2013
-		ratings_quota = 3
-		ratings_query = 'and ratings_ct < {}'.format(ratings_quota) if med == 'ig' else ''
-		n_photos_from_date = 100 # this is arbitrary, set only for budget/time constraints
-		return_set_size = 20
-		#REMEMBER: Right now we are:
-		#1) Only using depression 
-		#2) Only going forward/backward from diag_date, not susp_date!
-		#At some point we should reach back past susp date for those <60+ days suspected '''
-		f = open(query_file,'r')
-		query = json.loads(f.next())
-		q1 = query['validate']['d_from_diag'][med][condition].format(med=med,
-																	 medlong=med_long,
-																	 metatab=table,
-																	 cond=condition,
-																	 ratings_q=ratings_query)
-		df1 = pd.read_sql_query(q1, conn)
-		unames = "'" + "','".join(df1.username) + "'"
-		q2 = query['validate']['cesd'].format(cutoff=cesd_cutoff, names=unames)
-		df2 = pd.read_sql_query(q2, conn)
-		unames = "'" + "','".join(df2.username) + "'"
-		q3 = query['validate']['date_range'].format(metatab=table,
-													cond=condition,
-													names=unames)
-		df3 = pd.read_sql_query(q3, conn, parse_dates=['created_date','diag_date'])
-		lt_ix = (
-				df3.ix[df3.from_diag < 0,:]
-				   .groupby('username')['from_diag']
-				   .apply(lambda x: x.nlargest(n_photos_from_date))
-				   .reset_index()['level_1']
-				 )
-		gt_ix = (
-				df3.ix[df3.from_diag >= 0,:]
-				   .groupby('username')['from_diag']
-				   .apply(lambda x: x.nsmallest(n_photos_from_date))
-				   .reset_index()['level_1']
-				 )
-		before = df3.ix[lt_ix,:].copy()
-		after = df3.ix[gt_ix,:].copy()
-		photos_to_rate = pd.concat([before,after])
-		raw_urls = photos_to_rate.url.sample(return_set_size).values
-		urls = {}
-		for i,row in enumerate(raw_urls):
-			urls["url"+str(i)] = row
-		return jsonify(urls)
-	except Exception,e:
-		return jsonify({"url0":"error"})
-
-	
-
 ##  create_table: creates new db table, using parameters stored in table_data df (global)
 ##  this is only called directly via URI - it's not part of the verify/collect pipeline
 @app.route("/createtable/<conn>/<table>")
@@ -258,22 +193,95 @@ def create_table(conn, table):
 		return str(e)+query
 
 
+@app.route("/getphoto")
+@nocache
+def get_photo():
+	''' Called by qualtrics survey for photo raters, gets instagram photos to be rated
+	selects from urls which have not been rated at least N times (currently N=3)
+	upon successful completion of rating survey, N is incremented by 1 for each photo rated
+	photo urls are found in meta_ig '''
+
+	try:
+		conn = util.connect_db()
+		query_file = data_directory+"photo_ratings_queries.json"
+		med = "ig"
+		med_long = "instagram"
+		table = "meta_"+med
+		condition = "depression" # eventually we'll want to sample from all conditions
+		cesd_cutoff = 22 # as per DeChoudhury et al 2013
+		ratings_quota = 3
+		ratings_query = 'and ratings_ct < {}'.format(ratings_quota) if med == 'ig' else ''
+		n_photos_from_date = 100 # this is arbitrary, set only for budget/time constraints
+		return_set_size = 20
+
+		''' REMEMBER: Right now we are only using depression (as of Feb 29 2016)'''
+
+		f = open(query_file,'r')
+		query = json.loads(f.next())
+		q1 = query['validate']['d_from_diag'][med][condition].format(med=med,
+																	 medlong=med_long,
+																	 metatab=table,
+																	 cond=condition,
+																	 ratings_q=ratings_query)
+		df1 = pd.read_sql_query(q1, conn)
+		unames = "'" + "','".join(df1.username) + "'"
+		q2 = query['validate']['cesd'].format(cutoff=cesd_cutoff, names=unames)
+		df2 = pd.read_sql_query(q2, conn)
+		unames = "'" + "','".join(df2.username) + "'"
+		q3 = query['validate']['date_range'].format(metatab=table,
+													cond=condition,
+													names=unames)
+		df3 = pd.read_sql_query(q3, conn, parse_dates=['created_date','diag_date'])
+
+		# prevents duplicate entries from hsv
+		df3.dropna(subset=['diag_date'],inplace=True)
+
+		# get all posts within a year + 60 of diag
+		susp_offset = 60
+		maxrange = 365 + susp_offset
+		df3 = df3.ix[df3.from_diag<=maxrange,:]
+
+		lt_ix = (
+				df3.ix[df3.from_diag < 0,:]
+				   .groupby('username')['from_diag']
+				   .apply(lambda x: x.nlargest(n_photos_from_date))
+				   .reset_index()['level_1']
+				 )
+		gt_ix = (
+				df3.ix[df3.from_diag >= 0,:]
+				   .groupby('username')['from_diag']
+				   .apply(lambda x: x.nsmallest(n_photos_from_date))
+				   .reset_index()['level_1']
+				 )
+		before = df3.ix[lt_ix,:].copy()
+		after = df3.ix[gt_ix,:].copy()
+		photos_to_rate = pd.concat([before,after])
+		raw_urls = photos_to_rate.url.sample(return_set_size).values
+		urls = {}
+		for i,row in enumerate(raw_urls):
+			urls["url"+str(i)] = row
+		return jsonify(urls)
+	except Exception,e:
+		return jsonify({"url0":"error"})
+
+
 @app.route("/addrating/<rater_id>/<happy>/<sad>/<likable>/<interesting>/<one_word>/<description>/<encoded_url>", methods=['POST', 'GET', 'OPTIONS'])
 @crossdomain(origin='*')
-def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encoded_url,table="TEST_photo_ratings"):
+def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encoded_url,table="photo_ratings"):
 	''' Called from Qualtrics after a user has rated a photo
 		- Writes ratings data to photo_ratings db
 		- Increments ratings_ct in meta_ig for that URL '''
 
-	''' NOTE: 
-		The reason for the regex sub is because Flask parses / (as well as the encoded %2F) before we can even access
-		incoming parameter strings.  Since we're passing it a url, it barfs when it discovers slashes in the parameter
-		so we just converted / to _____ (5 underscores) on the Qualtrics side, and we back-translate here.
-		5 underscores may be overkill, but _ or even __ is not out of the question, just wanted to be safe. '''
-
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 
+	''' The reason for the regex sub on url below is because Flask parses forward slash (/) 
+		(as well as the encoded %2F) before we can even access incoming parameter strings programmatically.  
+		Since we're passing it a url, it barfs when it discovers slashes in the parameter.
+		So we converted / to _____ (5 underscores) on the Qualtrics side, and we back-translate here.
+		5 underscores may be overkill, but _ or even __ is not out of the question in a url...just being safe. '''
+
 	try:
+
 		url = unquote(encoded_url).replace("_____","/")
 
 		valid_ratings = False if description == "_" else True 
@@ -310,7 +318,9 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		else:
 
 			with conn:
-				query1 = "UPDATE meta_ig SET valid_url=404 WHERE url='{}'".format(url)
+				# getting to this part of the logic branch means a user said that no photo appeared for this url
+				# we flag it with the code 999 so we can review later to determine whether it really is a dead url
+				query1 = "UPDATE meta_ig SET valid_url=999 WHERE url='{}'".format(url)
 				cur = conn.cursor()
 				cur.execute(query1)
 			conn.commit()
