@@ -193,13 +193,13 @@ def create_table(conn, table):
 		return str(e)+query
 
 
+''' Called by qualtrics survey for photo raters, gets instagram photos to be rated
+selects from urls which have not been rated at least N times (currently N=3)
+upon successful completion of rating survey, N is incremented by 1 for each photo rated
+photo urls are found in meta_ig '''
 @app.route("/getphoto")
 @nocache
 def get_photo():
-	''' Called by qualtrics survey for photo raters, gets instagram photos to be rated
-	selects from urls which have not been rated at least N times (currently N=3)
-	upon successful completion of rating survey, N is incremented by 1 for each photo rated
-	photo urls are found in meta_ig '''
 
 	try:
 		conn = util.connect_db()
@@ -214,7 +214,7 @@ def get_photo():
 		n_photos_from_date = 100 # this is arbitrary, set only for budget/time constraints
 		return_set_size = 20
 
-		''' REMEMBER: Right now we are only using depression (as of Feb 29 2016)'''
+		# REMEMBER: Right now we are only using depression (as of Feb 29 2016)
 
 		f = open(query_file,'r')
 		query = json.loads(f.next())

@@ -119,7 +119,7 @@ def clean_qualtrics_data(data, condition):
 	''' Takes raw Qualtrics survey data, adjusts column names, drops unnecessary fields '''
 
 	# filter qualtrics variables that we don't need (we negate matches on this filter)
-	p = re.compile("time_.+[124]|SC0_[12]|SC1_[12]|suspected|active|know_date|share|m_[124]|t_[124]|validated|folw|diagnosis|condition|study_username|handle|medium|been_diag|criteria|agree|location|^cesd_|^tsq|recruitment|follow|v[2345678]|unnamed|consent|cst", flags=re.IGNORECASE)				
+	p = re.compile("time_.+[124]|SC0_[12]|SC1_[12]|suspected|active|know_date|share|m_[124]|t_[124]|validated|folw|diagnosis|condition|study_username|handle|medium|been_diag|criteria|agree|location|^cesd_|^tsq|recruitment|follow|v[2345678]|unnamed|consent|cst|increment_quota|checkpoint", flags=re.IGNORECASE)				
 	# rename qualtrics columns to database fields
 	updated={"unique_id":"uid",
 			 "V10":"qualtrics_complete",
@@ -178,16 +178,18 @@ def get_uid(uname, conn):
 
 def write_data_to_study_db(conn, data, condition, start_after):
 	''' Writes cleaned survey data to SQLite study-specific databases '''
-
+	print condition["condition"]
+	print condition["condition"] != "control"
 	uid_unames = data.username.apply(get_uid, args=(conn,)) 
 	data['uid_usernames'] = uid_unames if uid_unames is not None else ''
 
 	fields = tuple(data.columns)
 	vals = [tuple(row) for row in data.values]
-	# we convert month string into zero-padded integer
-	month_dict = {'February': '02', 'October': '10', 'March': '03', 'August': '08', 'May': '05', 'January': '01', 'June': '06', 'September': '09', 'April': '04', 'December': '12', 'July': '07', 'November': '11'}
-	data['diag_month'].fillna('',inplace=True)
-	data['diag_monthnum'] = [month_dict[mon] if mon != '' else None for mon in data['diag_month']]
+	if condition["condition"] != "control":
+		# we convert month string into zero-padded integer
+		month_dict = {'February': '02', 'October': '10', 'March': '03', 'August': '08', 'May': '05', 'January': '01', 'June': '06', 'September': '09', 'April': '04', 'December': '12', 'July': '07', 'November': '11'}
+		data['diag_month'].fillna('',inplace=True)
+		data['diag_monthnum'] = [month_dict[mon] if mon != '' else None for mon in data['diag_month']]
 
 	query = "INSERT OR IGNORE INTO {table}{cols} VALUES(".format(table=condition["condition"],cols=fields)
 	query += ('?,' *len(fields))[:-1] + ")"				
@@ -252,12 +254,15 @@ def update_validated_usernames(conn, data, condition, log_msgs):
 		log_msgs.append('No new data to add for {}'.format(condition['name']))
 
 
-def add_survey_data(conn, test=False, beginning_of_start_after_id_string='R'):
+def add_survey_data(conn, control=False, test=False, beginning_of_start_after_id_string='R'):
 	''' Pulls down survey data via Qualtrics API, cleans, stores to SQLite database '''
 
 	if test:
 		surveys = ['test_pregnancy',
 				   'test_depression']
+	elif control:
+		surveys = ['control_twitter',
+				   'control_instagram']
 	else:
 		surveys = ['pregnancy_twitter',
 				   'depression_twitter',
@@ -266,12 +271,13 @@ def add_survey_data(conn, test=False, beginning_of_start_after_id_string='R'):
 				   'pregnancy_instagram',
 				   'depression_instagram',
 				   'cancer_instagram',
-				   'ptsd_instagram']
+				   'ptsd_instagram',
+				   'control_twitter',
+				   'control_instagram']
 
 	new_data = False
 	
 	conditions = get_qualtrics_survey_ids(conn, surveys)
-
 	# Qualtrics credentials
 	_,_, user_id, api_token = util.get_tokens(conn, "qualtrics")
 
@@ -412,10 +418,10 @@ def count_days_from_turning_point_wrapper(conn):
 
 if __name__ == '__main__':
 	conn = util.connect_db()
-	add_survey_data(conn)
+	add_survey_data(conn, control=True)
 	collect(conn)
-	add_monthnum(conn)
-	count_days_from_turning_point_wrapper(conn)
+	#add_monthnum(conn)
+	#count_days_from_turning_point_wrapper(conn)
 
 
 	
