@@ -202,63 +202,17 @@ photo urls are found in meta_ig '''
 def get_photo():
 
 	try:
+		target_table = 'photo_ratings_depression'
 		conn = util.connect_db()
-		query_file = data_directory+"photo_ratings_queries.json"
-		med = "ig"
-		med_long = "instagram"
-		table = "meta_"+med
-		condition = "depression" # eventually we'll want to sample from all conditions
-		cesd_cutoff = 22 # as per DeChoudhury et al 2013
-		ratings_quota = 3
-		ratings_query = 'and ratings_ct < {}'.format(ratings_quota) if med == 'ig' else ''
-		n_photos_from_date = 100 # this is arbitrary, set only for budget/time constraints
-		return_set_size = 20
-
-		# REMEMBER: Right now we are only using depression (as of Feb 29 2016)
-
-		f = open(query_file,'r')
-		query = json.loads(f.next())
-		q1 = query['validate']['d_from_diag'][med][condition].format(med=med,
-																	 medlong=med_long,
-																	 metatab=table,
-																	 cond=condition,
-																	 ratings_q=ratings_query)
-		df1 = pd.read_sql_query(q1, conn)
-		unames = "'" + "','".join(df1.username) + "'"
-		q2 = query['validate']['cesd'].format(cutoff=cesd_cutoff, names=unames)
-		df2 = pd.read_sql_query(q2, conn)
-		unames = "'" + "','".join(df2.username) + "'"
-		q3 = query['validate']['date_range'].format(metatab=table,
-													cond=condition,
-													names=unames)
-		df3 = pd.read_sql_query(q3, conn, parse_dates=['created_date','diag_date'])
-
-		# prevents duplicate entries from hsv
-		df3.dropna(subset=['diag_date'],inplace=True)
-
-		# get all posts within a year + 60 of diag
-		susp_offset = 60
-		maxrange = 365 + susp_offset
-		df3 = df3.ix[df3.from_diag<=maxrange,:]
-
-		lt_ix = (
-				df3.ix[df3.from_diag < 0,:]
-				   .groupby('username')['from_diag']
-				   .apply(lambda x: x.nlargest(n_photos_from_date))
-				   .reset_index()['level_1']
-				 )
-		gt_ix = (
-				df3.ix[df3.from_diag >= 0,:]
-				   .groupby('username')['from_diag']
-				   .apply(lambda x: x.nsmallest(n_photos_from_date))
-				   .reset_index()['level_1']
-				 )
-		before = df3.ix[lt_ix,:].copy()
-		after = df3.ix[gt_ix,:].copy()
-		photos_to_rate = pd.concat([before,after])
-		raw_urls = photos_to_rate.url.sample(return_set_size).values
+		max_ratings_ct = 3
+		sample_size = 20
+		query = 'select * from {}'.format(target_table)
+		db = pd.read_sql_query(query, conn)
+		gb = db.groupby('url').count()
+		# we use 'rater_id' because we need to pick a column that keeps track of the groupby count. happy, sad, etc. also work
+		urls_to_rate = gb.ix[gb.rater_id < max_ratings_ct,'rater_id'].sample(sample_size).index.tolist()
 		urls = {}
-		for i,row in enumerate(raw_urls):
+		for i,row in enumerate(urls_to_rate):
 			urls["url"+str(i)] = row
 		return jsonify(urls)
 	except Exception,e:
@@ -273,6 +227,7 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		- Increments ratings_ct in meta_ig for that URL '''
 
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+	target_table = 'photo_ratings_depression'
 
 	''' The reason for the regex sub on url below is because Flask parses forward slash (/) 
 		(as well as the encoded %2F) before we can even access incoming parameter strings programmatically.  
@@ -302,13 +257,12 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 				cur = conn.cursor()
 				cur.execute(query1)
 
-				for i,field in enumerate(fields):
-					try:
-						val = values[i]
-						query2 = "UPDATE {table} SET {f}='{val}' WHERE url='{url}'".format(table=table, f=field, val=val, url=url)
-						cur.execute(query2)
-					except Exception,e:
-						return query2+"__"+str(e)
+				try:
+					query2 = 'insert into {}(url, rater_id, happy, sad, likable, interesting, one_word, description) values (?,?,?,?,?,?,?,?)'.format(target_table)
+					qvals = (url,)+tuple(values)
+					cur.execute(query2,qvals)
+				except Exception,e:
+					return query2+"__"+str(e)
 			conn.commit()
 
 			log_msgs.append('\nRating for url: {} [rater id: {}] stored successfully!'.format(url,values[0]))
@@ -320,6 +274,7 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 			with conn:
 				# getting to this part of the logic branch means a user said that no photo appeared for this url
 				# we flag it with the code 999 so we can review later to determine whether it really is a dead url
+				# UPDATE (APR 08 2016): This is legacy code now, we /sunsetted/ the user-inputted no-photo marker
 				query1 = "UPDATE meta_ig SET valid_url=999 WHERE url='{}'".format(url)
 				cur = conn.cursor()
 				cur.execute(query1)
@@ -334,6 +289,29 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		util.log(log_msgs,log_dir,full_path_included=True)
 		return str(e)
 
+@app.route("/ratingsreport")
+def ratings_report():
+	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+	log_dir = 'ratings/REPORT__{t}.log'.format(t=tstamp)
+	log_msgs = []
+
+	target_table = 'photo_ratings_depression'
+	conn = util.connect_db()
+	max_ratings_ct = 3
+	sample_size = 20
+	query = 'select * from {}'.format(target_table)
+	db = pd.read_sql_query(query, conn)
+	gb = db.groupby('url').count()
+	log_msgs = ['Photos with NO ratings: {}'.format(np.sum(gb['rater_id'] == 0))]
+	max_ratings_on_record = 12
+	for i in range(max_ratings_on_record):
+	    ct = np.sum(gb['rater_id'] > i)
+	    log_msgs.append('Photos with more than {} ratings: {}'.format(i,ct))
+	try:
+		util.log(log_msgs,log_dir,full_path_included=True)
+		return '<br />'.join(log_msgs)
+	except Exception,e:
+		return str(e)
 
 @app.route("/oauth/<medium>/<username>")
 def get_auth(medium,username):
