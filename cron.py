@@ -119,7 +119,14 @@ def clean_qualtrics_data(data, condition):
 	''' Takes raw Qualtrics survey data, adjusts column names, drops unnecessary fields '''
 
 	# filter qualtrics variables that we don't need (we negate matches on this filter)
-	p = re.compile("time_.+[124]|SC0_[12]|SC1_[12]|suspected|active|know_date|share|m_[124]|t_[124]|validated|folw|diagnosis|condition|study_username|handle|medium|been_diag|criteria|agree|location|^cesd_|^tsq|recruitment|follow|v[2345678]|unnamed|consent|cst|increment_quota|checkpoint", flags=re.IGNORECASE)				
+	filter_keywords = ["time_.+[124]","SC0_[12]","SC1_[12]","suspected","email_address",
+					   "qualified","notes","base_pay","bonus_pay","active","know_date",
+					   "platform_uppercase","share","m_[124]","t_[124]","validated","folw",
+					   "diagnosis","condition","study_username","handle","medium","been_diag",
+					   "criteria","agree","location","^cesd_","^tsq","recruitment","follow",
+					   "v[2345678]","unnamed","consent","cst","increment_quota","checkpoint"]
+
+	p = re.compile('|'.join(filter_keywords), flags=re.IGNORECASE)				
 	# rename qualtrics columns to database fields
 	updated={"unique_id":"uid",
 			 "V10":"qualtrics_complete",
@@ -132,12 +139,16 @@ def clean_qualtrics_data(data, condition):
 			 "event_date#1_1":"event_month",
 			 "event_date#2_1":"event_day",
 			 "event_date#3_1":"event_year",
+			 "conceived#1_1":"conceived_month",
+			 "conceived#2_1":"conceived_day",
+			 "conceived#3_1":"conceived_year",
 			 "suspect_ct":"days_suspected",
 			 "time_cesd_3":"timer_cesd",
 			 "uname_ig":"username_ig",
 			 "uname_tw":"username_tw",
 			 "\xef\xbb\xbfV1":"response_id",
-			 "V1":"response_id"
+			 "V1":"response_id",
+			 "email":"email_address" # this is kind of silly but you named the wrong variable in the db tables
 			}
 	# filter out unused qualtrics columns 
 	drop_cols = data.filter(regex=p).columns
@@ -178,18 +189,22 @@ def get_uid(uname, conn):
 
 def write_data_to_study_db(conn, data, condition, start_after):
 	''' Writes cleaned survey data to SQLite study-specific databases '''
-	print condition["condition"]
-	print condition["condition"] != "control"
+	print "Running write_data_to_study_db for {} (start after id:{})".format(condition["condition"].upper(), start_after.ix[start_after.condition==condition["name"],"id"].values)
+
 	uid_unames = data.username.apply(get_uid, args=(conn,)) 
 	data['uid_usernames'] = uid_unames if uid_unames is not None else ''
 
 	fields = tuple(data.columns)
 	vals = [tuple(row) for row in data.values]
 	if condition["condition"] != "control":
-		# we convert month string into zero-padded integer
-		month_dict = {'February': '02', 'October': '10', 'March': '03', 'August': '08', 'May': '05', 'January': '01', 'June': '06', 'September': '09', 'April': '04', 'December': '12', 'July': '07', 'November': '11'}
-		data['diag_month'].fillna('',inplace=True)
-		data['diag_monthnum'] = [month_dict[mon] if mon != '' else None for mon in data['diag_month']]
+		try:
+			# we convert month string into zero-padded integer
+			month_dict = {'February': '02', 'October': '10', 'March': '03', 'August': '08', 'May': '05', 'January': '01', 'June': '06', 'September': '09', 'April': '04', 'December': '12', 'July': '07', 'November': '11'}
+			data['diag_month'].fillna('',inplace=True)
+			data['diag_monthnum'] = [month_dict[mon] if mon != '' else None for mon in data['diag_month']]
+		except Exception,e:
+			print 'problem with monthnum conversion ({})'.format(condition['name'])
+			print str(e)
 
 	query = "INSERT OR IGNORE INTO {table}{cols} VALUES(".format(table=condition["condition"],cols=fields)
 	query += ('?,' *len(fields))[:-1] + ")"				
@@ -207,7 +222,7 @@ def write_data_to_study_db(conn, data, condition, start_after):
 	return start_after 
 
 
-def update_validated_usernames(conn, data, condition, log_msgs):
+def update_validated_usernames(conn, data, condition, log_msgs, post_threshold=5):
 	''' Updates `usernames` table with validated status (0/1) of participants, based on total_posts '''
 
 	ct = 0
@@ -221,15 +236,20 @@ def update_validated_usernames(conn, data, condition, log_msgs):
 			elif medium == "instagram":
 				uname = row.username_ig
 
-			query = "SELECT total_posts FROM usernames WHERE username='{}' AND medium='{}'".format(uname,medium)
+			query = "SELECT total_posts, validated FROM usernames WHERE username='{}' AND medium='{}'".format(uname,medium)
 			with conn:
 				cur = conn.cursor()
 				cur.execute(query)
-				total_posts = cur.fetchone()[0]
-			print 'total_posts: {}'.format(total_posts)
-			if (int(row.qualtrics_complete)==1) and isinstance(uname,str):
-				if total_posts > 5:
-					log_msgs.append('VALIDATED:  {cond}  {wid}  {rid}'.format(cond=condition['name'], wid=row.workerId, rid=row.response_id))
+				r = cur.fetchall()
+			# testing
+			# print 'this is r:'
+			# print r
+			total_posts, valid_status = r[0]
+			print 'username: {} | posts: {} | validated: {}'.format(uname, total_posts, valid_status)
+
+			if (int(row.qualtrics_complete)==1) and isinstance(uname,str) and (valid_status!=1):
+				if total_posts > post_threshold:
+					log_msgs.append('VALIDATED:  {cond}  {wid}  {rid} {name}'.format(cond=condition['name'], wid=row.workerId, rid=row.response_id, name=uname))
 					switched.append(uname)
 					ct +=1
 					query = "UPDATE usernames SET valid_{}='{}', validated=1 WHERE username='{}' AND medium='{}'".format(condition['condition'],row.response_id,uname,medium)
@@ -238,13 +258,15 @@ def update_validated_usernames(conn, data, condition, log_msgs):
 						cur.execute(query)
 					conn.commit()
 				else:
-					log_msgs.append('INVALIDATED:  NOT ENOUGH POSTS: {cond}  {wid}  {rid}'.format(cond=condition['name'], wid=row.workerId, rid=row.response_id))
+					log_msgs.append('INVALIDATED:  NOT ENOUGH POSTS: {cond}  {wid}  {rid} {name}'.format(cond=condition['name'], wid=row.workerId, rid=row.response_id, name=uname))
 					query = "UPDATE usernames SET valid_{}='{}', validated=0, collect_error='Not enough posts' WHERE username='{}' AND medium='{}'".format(condition['condition'],row.response_id,uname,medium)
 					with conn:
 						cur = conn.cursor()
 						cur.execute(query)
 					conn.commit()
-		except:
+		except Exception, e:
+			print "ERROR: update_validated_usernames, write to db block"
+			print str(e)
 			pass
 
 	if ct > 0:
@@ -295,6 +317,13 @@ def add_survey_data(conn, control=False, test=False, beginning_of_start_after_id
 		# get CSV of survey responses from Qualtrics API call
 		data = get_qualtrics_survey_data(start_after, beginning_of_start_after_id_string, condition, user_id, api_token)
 		
+		# testing
+		print 'DATA: {}'.format(condition['name'])
+		print
+		print data.shape 
+		print data
+		print
+		print 
 		if data.shape[0] > 0: # if there are new entries, record to SQL
 			new_data = True			
 			clean_qualtrics_data(data, condition)
@@ -361,7 +390,7 @@ def count_days_from_turning_point(conn, condition, medium_abbr):
 		rows = cur.fetchall()
 	print 
 	print
-	print "CONDITION: {}".format(condition)
+	print "CONDITION: {} ({})".format(condition, medium_abbr.upper())
 
 	params = []
 	for r in rows:
@@ -417,11 +446,14 @@ def count_days_from_turning_point_wrapper(conn):
 			count_days_from_turning_point(conn, condition, medium)
 
 if __name__ == '__main__':
+	control_collection = False
 	conn = util.connect_db()
-	add_survey_data(conn, control=True)
+	conn.text_factory = str
+	add_survey_data(conn, control=control_collection)
 	collect(conn)
-	#add_monthnum(conn)
-	#count_days_from_turning_point_wrapper(conn)
+	if not control_collection:
+		add_monthnum(conn)
+		count_days_from_turning_point_wrapper(conn)
 
 
 	

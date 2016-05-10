@@ -41,6 +41,7 @@ context.load_cert_chain(cert_path,cert_key_path)
 table_data = util.get_table_data()
 
 
+
 def crossdomain(origin=None, methods=None, headers=None,
 				max_age=21600, attach_to_all=True, automatic_options=True):
 	''' Super-helpful decorator to avoid CORS issues when calling from Qualtrics (or anywhere else)
@@ -197,16 +198,15 @@ def create_table(conn, table):
 selects from urls which have not been rated at least N times (currently N=3)
 upon successful completion of rating survey, N is incremented by 1 for each photo rated
 photo urls are found in meta_ig '''
-@app.route("/getphoto")
+@app.route("/getphoto/<cond>/<kind>")
 @nocache
-def get_photo():
+def get_photo(kind, cond):
 
 	try:
-		target_table = 'photo_ratings_depression'
 		conn = util.connect_db()
 		max_ratings_ct = 3
 		sample_size = 20
-		query = 'select * from {}'.format(target_table)
+		query = 'select * from photo_ratings_{}_{}'.format(cond, kind)
 		db = pd.read_sql_query(query, conn)
 		gb = db.groupby('url').count()
 		# we use 'rater_id' because we need to pick a column that keeps track of the groupby count. happy, sad, etc. also work
@@ -216,10 +216,10 @@ def get_photo():
 			urls["url"+str(i)] = row
 		return jsonify(urls)
 	except Exception,e:
-		return jsonify({"url0":"error"})
+		return jsonify({"url0":str(e)})
 
 
-@app.route("/addrating/<rater_id>/<happy>/<sad>/<likable>/<interesting>/<one_word>/<description>/<encoded_url>", methods=['POST', 'GET', 'OPTIONS'])
+@app.route("/addrating/<cond>/<kind>/<rater_id>/<happy>/<sad>/<likable>/<interesting>/<one_word>/<description>/<encoded_url>", methods=['POST', 'GET', 'OPTIONS'])
 @crossdomain(origin='*')
 def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encoded_url,table="photo_ratings"):
 	''' Called from Qualtrics after a user has rated a photo
@@ -227,7 +227,6 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		- Increments ratings_ct in meta_ig for that URL '''
 
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
-	target_table = 'photo_ratings_depression'
 
 	''' The reason for the regex sub on url below is because Flask parses forward slash (/) 
 		(as well as the encoded %2F) before we can even access incoming parameter strings programmatically.  
@@ -289,20 +288,19 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		util.log(log_msgs,log_dir,full_path_included=True)
 		return str(e)
 
-@app.route("/ratingsreport")
+@app.route("/ratingsreport/<cond>/<kind>")
 def ratings_report():
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 	log_dir = 'ratings/REPORT__{t}.log'.format(t=tstamp)
 	log_msgs = []
 
-	target_table = 'photo_ratings_depression'
 	conn = util.connect_db()
 	max_ratings_ct = 3
 	sample_size = 20
-	query = 'select * from {}'.format(target_table)
+	query = 'select * from photo_ratings_{}_{}'.format(cond,kind)
 	db = pd.read_sql_query(query, conn)
 	gb = db.groupby('url').count()
-	log_msgs = ['Photos with NO ratings: {}'.format(np.sum(gb['rater_id'] == 0))]
+	log_msgs = ['Photos in {}-{} with NO ratings: {}'.format(cond, kind, np.sum(gb['rater_id'] == 0))]
 	max_ratings_on_record = 12
 	for i in range(max_ratings_on_record):
 	    ct = np.sum(gb['rater_id'] > i)
@@ -447,23 +445,6 @@ def ping():
 @app.route("/testoauth/<medium>/<username>")
 def test_oauth(medium, username):
 	return 'For testing only.'
-
-@app.route("/do/<action>")
-def invite(action):
-	''' This function was used for direct invites on Twitter.  
-		That got shut down rull fast, and is no longer in use. '''
-	try:
-		inv = util.Inviter(data_directory)
-		if action == "test":
-			inv.conditions = ["TEST"] # comment out when you go live
-			action = "invite"
-
-		for cond in inv.conditions:
-			inv.do(action, cond)
-
-		return "Invitations sent successfully!"
-	except Exception,e:
-		return str(e)
 
 
 app.secret_key = os.environ.get("SECRET_KEY")
