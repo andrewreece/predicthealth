@@ -1,30 +1,34 @@
+import sqlite3
 import pandas as pd
-import numpy as np 
-import re, datetime 
-from re import findall,UNICODE
+import numpy as np
+from scipy import linalg
+import itertools
+import datetime
 
-from sklearn.cross_validation import train_test_split
-from sklearn.linear_model import LogisticRegression as logreg
-from sklearn.linear_model import LogisticRegressionCV as logregcv
-from sklearn.ensemble import RandomForestClassifier as RFC
-from sklearn.svm import SVC
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve, auc
-from sklearn.preprocessing import Imputer
+from matplotlib import pyplot as plt
+import matplotlib as mpl
 
-from scipy.stats import ttest_ind as ttest
-from scipy.stats import ttest_rel
-from statsmodels.sandbox.stats.multicomp import multipletests
-
-from sklearn.preprocessing import scale
-from sklearn.decomposition import PCA
-from sklearn import cross_validation
-
-from matplotlib import pyplot as plt 
 import seaborn as sns
 sns.set_style('white')
 
+import pickle
+from skimage import io, data, color
+import re
+from re import findall,UNICODE
+
+from sklearn.cross_validation import train_test_split
+
+from sklearn.metrics import confusion_matrix
+from sklearn.metrics import roc_curve, auc
+
+from sklearn.preprocessing import scale
+from sklearn import cross_validation
+from sklearn import mixture
+
+from statsmodels.sandbox.stats.multicomp import multipletests
+
 from labMTsimple.speedy import *
+
 
 def define_params(condition, test_name, test_cutoff, 
 				  platform, platform_long, fields,
@@ -205,6 +209,26 @@ def define_params(condition, test_name, test_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
+						'model':['total_words',
+								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
 						'full':	['tweet_id', 'user_id', 'total_words',
 								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
 								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
@@ -224,7 +248,8 @@ def define_params(condition, test_name, test_cutoff,
 								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','before_diag','before_susp']
+								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
+								   'created_date','diag_date']
 						},
 					'user_id':{
 						'means':['LIWC_happs', 'LabMT_happs',
@@ -245,6 +270,25 @@ def define_params(condition, test_name, test_cutoff,
 								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
+						'model':['LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
 						'full':	['tweet_id', 'user_id', 
 								   'LIWC_happs', 'LabMT_happs',
@@ -287,6 +331,25 @@ def define_params(condition, test_name, test_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
+						'model':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
 						'full':	['tweet_id', 'user_id', 'total_words',
 								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
 								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
@@ -306,10 +369,27 @@ def define_params(condition, test_name, test_cutoff,
 								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','before_diag','before_susp']
+								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
+								   'created_date','diag_date']
 						}
 				}
 					
+			},
+			'fields_to_merge':{
+				'tw':{
+					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','before_diag','before_susp','created_date','diag_date'],
+					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','before_diag','before_susp','created_date','diag_date'],
+					'user_id':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count']
+					},
+				'ig':{}
+			},
+			'merge_on':{
+				'tw':{
+					'weekly':		['user_id','created_date'],
+					'created_date':	['user_id','created_date'],
+					'user_id':		['user_id']
+					},
+				'ig':{}
 			},
 			'model_vars_excluded':{
 				'ig': {
@@ -544,7 +624,7 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long,
 
 	unames = get_pop_unames(params, m, conn, pop)
 	meta = get_meta(params, conn, pop, doPrint)
-	all_tweets = meta.ix[meta.username.isin(unames.username), :]
+	all_tweets = meta.ix[meta.username.isin(unames.username), :].copy()
 	all_tweets.drop_duplicates(subset='id', inplace=True)
 
 	# indicates membership of target population
@@ -852,12 +932,8 @@ def make_groupby(df, m, pop, params, gb_types,
 			# bring url into column set (instead of as row index)
 			df['gb'][gb_type].reset_index(inplace=True)
 
-			merge_on = ['user_id']
-			fields_to_merge = ['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count']
-
-			if gb_type != "user_id": # we don't use created_date to merge on username gb
-				merge_on.append('created_date')
-				fields_to_merge.extend(['before_diag','before_susp','created_date'])
+			merge_on = params['merge_on'][m][gb_type]
+			fields_to_merge = params['fields_to_merge'][m][gb_type]
 
 			#testing
 			#print 'gb type:', gb_type
@@ -980,21 +1056,24 @@ def make_roc(name, clf, ytest, xtest, ax=None, labe=5, proba=True, skip=0):
 	return ax
 
 
-def print_model_summary(fit,ctype,target,title,X_test,y_test,labels):
-	''' formats model output in a notebook-friendly print layout '''
+def print_confusion_matrix(X_pred, y_test, ctype, labels=None):
 
-	print 'MODEL: {} {} ({}):'.format(fit['name'],target,title)
-	print 'NAIVE ACCURACY:'.format(ctype), round(fit['clf'].score(X_test,y_test),3)
 	print
 	print 'CONFUSION MATRIX ({}):'.format(ctype)
 	
-	# for confusion matrix
-	known_0 = labels['known_0']
-	known_1 = labels['known_1']
-	pred_0 = labels['pred_0']
-	pred_1 = labels['pred_1']
+	if labels:
+		# for confusion matrix
+		known_0 = labels['known_0']
+		known_1 = labels['known_1']
+		pred_0 = labels['pred_0']
+		pred_1 = labels['pred_1']
+	else:
+		known_0 = 'known_0'
+		known_1 = 'known_1'
+		pred_0 = 'pred_0'
+		pred_1 = 'pred_1'
 
-	cm_df = pd.DataFrame(confusion_matrix(y_test, fit['clf'].predict(X_test)), 
+	cm_df = pd.DataFrame(confusion_matrix(y_test, X_pred), 
 						 columns=[pred_0,pred_1], 
 						 index=[known_0,known_1])
 	print cm_df
@@ -1003,6 +1082,15 @@ def print_model_summary(fit,ctype,target,title,X_test,y_test,labels):
 	print 'Proportion of {} in {}:'.format(pred_1,known_1), round(cm_df.ix[known_1,pred_1] / float(cm_df.ix[known_1,:].sum()),3)
 	print
 	print
+
+
+def print_model_summary(fit,ctype,target,title,X_test,y_test,labels):
+	''' formats model output in a notebook-friendly print layout '''
+
+	print 'MODEL: {} {} ({}):'.format(fit['name'],target,title)
+	print 'NAIVE ACCURACY:'.format(ctype), round(fit['clf'].score(X_test,y_test),3)
+
+	print_confusion_matrix(fit['clf'].predict(X_test), y_test, ctype, labels)
 
 
 def roc_wrapper(fits, ctype, y_test, X_test, plat):
@@ -1055,14 +1143,15 @@ def pca_explore(pca, X):
 
 	plt.figure()
 	X_reduced = pca.fit_transform(scale(X))
-	print 'total vars:', X.shape[1]
-	print 'cumulative % variance explained per component:'
+	print 'Total vars:', X.shape[1]
+	print 'Num components selected by Minka MLE:', pca.components_.shape[0]
+	print 'Cumulative % variance explained per component:'
 	cumvar = np.cumsum(np.round(pca.explained_variance_ratio_, decimals=4)*100)
 	print cumvar
 	plt.plot(cumvar)
 	_=plt.ylim([0,100])
 	plt.show()
-	return X_reduced 
+	return X_reduced, pca.n_components_
 
 
 def pca_model(pca, X_reduced, y, num_pca_comp):
@@ -1074,7 +1163,7 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	f1 = [] # https://en.wikipedia.org/wiki/F1_score
 
 	if not num_pca_comp:
-		num_pca_comp = int(X_reduced.shape[1] / float(2)) # plot half of all vars as a default
+		num_pca_comp = X_reduced.shape[1]
 	
 	score = cross_validation.cross_val_score(lr, np.ones((n,1)), y.ravel(), cv=kf_10, scoring='f1').mean()    
 	f1.append(score) 
@@ -1102,6 +1191,21 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	return new_num_pca_comp
 
 
+def pca_report(fit, feats, N=3):
+	''' Prints components loadings for the top N components.
+		Three separate printouts are made, each is sorted with the highest loading variables per component on top
+	'''
+	loaddf = (pd.DataFrame(fit.components_.T[:,0:N], 
+						   columns=['PCA_{}'.format(x) for x in np.arange(N)], 
+						   index=feats)
+			  .abs()
+			  )
+	for n in np.arange(N):
+		comp_ix = 'PCA_{}'.format(n)
+		print loaddf.sort_values(comp_ix,ascending=False).ix[0:10,comp_ix]
+		print 
+
+
 def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None, 
 				tall_plot=False, n_est=100, kernel='rbf', use_pca=False, num_pca_comp=None,
 				labels={'known_0':'known_control',
@@ -1115,17 +1219,10 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	feats = d['features']
 	if 'tall_plot' in d.keys():
 		tall_plot = d['tall_plot']
-
-	mask = mdata.columns.isin(feats)
-	model_feats = mdata.columns[mask]
 	
-	X = mdata[model_feats]
+	X = mdata[feats]
 	y = mdata[target]
 
-	if excluded_set is not None:
-		for field in excluded_set:
-			if field in X.columns:
-				X.drop(field, 1, inplace=True)
 	cleanX(X)
 
 	model_feats = X.columns
@@ -1135,12 +1232,15 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	
 	if use_pca:
 		# http://stats.stackexchange.com/questions/82050/principal-component-analysis-and-regression-in-python
-		pca = PCA()
-		X_reduced = pca_explore(pca, X)
+		# http://nxn.se/post/36838219245/loadings-with-scikit-learn-pca
+		# http://stackoverflow.com/questions/22984335/recovering-features-names-of-explained-variance-ration-in-pca-with-sklearn
+		pca = PCA(n_components='mle')
+		X_reduced, num_pca_comp = pca_explore(pca, X)
 		num_pca_comp = pca_model(pca, X_reduced, y, num_pca_comp)
+		pca_report(pca, model_feats)
 		X = X_reduced[:,0:num_pca_comp+1].copy() # we do all subsequent modeling with the best PCA component vectors
 		model_feats = pd.Series(['pca_{}'.format(x) for x in np.arange(num_pca_comp+1)])
-	
+		
 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
 	
 	fits = {}
@@ -1182,7 +1282,7 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	
 		output[ctype] = fits[ctype]['clf']
 
-	return output
+	return output, pca
 
 
 def ttest_output(a, b, varset, ttype, correction=True, alpha=0.05, method='bonferroni'):
@@ -1253,7 +1353,7 @@ def master_actions(master, target, control, condition, m, params, gb_type, repor
 	if aparams['save_to_file']:
 		# save csv of target-type // groupby-type
 		csv_name = '{cond}_{m}_{gbt}_{r}.csv'.format(cond=condition,m=m,gbt=gb_type,r=report)
-		master[gb_type].to_csv(csv_name, encoding='utf-8')
+		master[gb_type].to_csv(csv_name, encoding='utf-8', index=False)
 
 	if aparams['ml']:
 		print 'Building ML models...'
@@ -1425,7 +1525,48 @@ def create_word_feats(df, tunit, condition, conn, write_to_db=False, testing=Fal
 			cur.executemany(q,vals)
 			conn.commit()
 
+def select_gmm(X):
+	''' BIC selection of best number of mixture components.
+		Code taken entirely from sklearn docs:
+		http://scikit-learn.org/stable/auto_examples/mixture/plot_gmm_selection.html#example-mixture-plot-gmm-selection-py
+	'''
+	lowest_bic = np.infty
+	bic = []
+	n_components_range = range(1, 7)
+	cv_types = ['spherical', 'tied', 'diag', 'full']
+	for cv_type in cv_types:
+	    for n_components in n_components_range:
+	        # Fit a mixture of Gaussians with EM
+	        gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+	        gmm.fit(X)
+	        bic.append(gmm.bic(X))
+	        if bic[-1] < lowest_bic:
+	            lowest_bic = bic[-1]
+	            best_gmm = gmm
 
+	bic = np.array(bic)
+	color_iter = itertools.cycle(['gray', 'red', 'purple', 'blue'])
+	clf = best_gmm
+	bars = []
+
+	plt.figure(figsize=(8,6))
+	# Plot the BIC scores
+	for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
+	    xpos = np.array(n_components_range) + .2 * (i - 2)
+	    bars.append(plt.bar(xpos, bic[i * len(n_components_range):
+	                                  (i + 1) * len(n_components_range)],
+	                        width=.2, color=color, alpha=0.7))
+	plt.xticks(n_components_range)
+	plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
+	plt.title('BIC score per model')
+	xpos = np.mod(bic.argmin(), len(n_components_range)) + .65 +\
+	    .2 * np.floor(bic.argmin() / len(n_components_range))
+	plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
+	plt.xlabel('Number of components')
+	plt.legend([b[0] for b in bars], cv_types)
+	plt.show()
+
+	return best_gmm
 
 
 ''' OLD REUSABLE CODE
