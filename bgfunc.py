@@ -16,29 +16,104 @@ from skimage import io, data, color
 import re
 from re import findall,UNICODE
 
+
+from sklearn.preprocessing import scale
+from sklearn.preprocessing import Imputer
 from sklearn.cross_validation import train_test_split
+
+from sklearn.linear_model import LogisticRegression as logreg
+from sklearn.linear_model import LogisticRegressionCV as logregcv
+from sklearn.ensemble import RandomForestClassifier as RFC
+from sklearn.svm import SVC
 
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, auc
 
-from sklearn.preprocessing import scale
 from sklearn import cross_validation
 from sklearn import mixture
+from sklearn.decomposition import PCA
+
+from scipy.stats import ttest_ind as ttest
+from scipy.stats import ttest_rel
 
 from statsmodels.sandbox.stats.multicomp import multipletests
 
 from labMTsimple.speedy import *
 
 
-def define_params(condition, test_name, test_cutoff, 
+def analysis_specifications(pl, condition):
+	''' Defines basic specs for analysis, based on platform and target condition.
+		These specs are used to set larger params dict in define_params(). '''
+
+	specs = {}
+
+	p_vars = ['gb_types','plong','fields']
+	p_opts = {
+		'gb_types':{
+			'ig':['post','created_date','username'],
+			'tw':['created_date','weekly','user_id']
+		},
+		'plong':{
+			'ig':'instagram',
+			'tw':'twitter'
+		},
+		'fields':{
+			'ig':'url',
+			'tw':'id, text, has_url'
+		}
+	}
+
+	for v in p_vars:
+		specs[v] = p_opts[v]
+
+	c_vars = ['has_test','test_name','test_cutoff','photos_rated']
+	c_opts = {
+		'has_test':{
+			'depression':True,
+			'ptsd':True,
+			'pregnancy':False,
+			'cancer':False
+		},
+		'test_name':{
+			'depression':'cesd',
+			'ptsd':'tsq',
+			'pregnancy':None,
+			'cancer':None
+		},
+		'test_cutoff':{
+			'depression':21,
+			'ptsd':5,
+			'pregnancy':None,
+			'cancer':None
+		},
+		'photos_rated':{
+			'depression':True,
+			'ptsd':False,
+			'pregnancy':False,
+			'cancer':False
+		}
+	}
+	
+	for v in c_vars:
+		specs[v] = c_opts[v]
+
+	return specs
+
+
+def define_params(condition, test_name, test_cutoff, impose_cutoff,
 				  platform, platform_long, fields,
-				  photos_rated=False, has_test=False, ratings_min=3):
-	''' creates params dict for queries and other foundational parameters used throughout analysis '''
+				  photos_rated, has_test, ratings_min=3):
+	''' Creates params dict for queries and other foundational parameters used throughout analysis '''
 
 	if photos_rated and (platform=='ig'):
 		ratings_clause = ' and ratings_ct >= {}'.format(ratings_min)
 	else:
-		ratings_clause = ''
+		ratings_clause = ""
+
+	if has_test and impose_cutoff:
+		cutoff_clause = " and {name} > {cutoff}".format(name=test_name, cutoff=test_cutoff)
+	else:
+		cutoff_clause = ""
 
 	params = {
 			'q': {
@@ -59,10 +134,9 @@ def define_params(condition, test_name, test_cutoff,
 																																										 plat=platform,
 																																										 plat_long=platform_long,
 																																										 ratings_clause=ratings_clause),
-					'unames':		'select username from {cond} where platform="{plat_long}" and {test_name} > {cutoff} and username is not null and disqualified=0'.format(cond=condition, 
-																																											 test_name=test_name, 
-																																											 cutoff=test_cutoff,
-																																											 plat_long=platform_long)
+					'unames':		'select username from {cond} where platform="{plat_long}" and username is not null and disqualified=0{cutoff_clause}'.format(cond=condition, 
+																																								 plat_long=platform_long,
+																																								 cutoff_clause=cutoff_clause)
 				},
 				'c':{
 					'photo_ratings':'select url, rater_id, happy, sad, interesting, likable, one_word, description from photo_ratings_{cond}_control'.format(cond=condition),
@@ -477,6 +551,51 @@ def make_data_dict(params, condition, test_name, conn, doPrint=False):
 	return data 
 
 
+def get_additional_data(data, params, platform, condition, pop, pop_long, conn, doPrint=False):
+	''' For Instagram: Checks if this condition has photo ratings, if so, adds to basic (hsv) data. '''
+
+	# this if- block deals with conditions where photos have been rated
+	if params['rated']: 
+		
+		kind = 'ratings'
+		
+		d = get_photo_ratings(params, conn, pop)
+
+		# print 'Indices with broken photos:', find_and_drop_broken_photos(d, drop_from_df=False)
+		find_and_drop_broken_photos(d) # this call actually drops them
+
+		d2 = get_meta(params, conn, pop)
+
+		# Now merge the meta_ig data with the photo_ratings_depression data
+		consolidate_data(d, d2, platform, pop_long, kind, data)
+		
+		if doPrint:
+			# Hunting for ratings errors
+			print_coltype(data, condition, platform, pop_long)
+			ixs = find_chartype(data,'interesting')
+
+		''' Warning: This isn't very robust - you have this conditional set here because you discovered it's only the 
+			target group photo ratings that have the problematic "strings for photo ratings" issue.  
+
+			A more generalized way to go about this would be to create a flag from find_chartype() that identifies whether 
+			map_str_ratings_to_numeric() is necessary...but even then, the custom mapping you created is really case specific 
+			and does not easily generalize. 
+			
+			It's probably not worth trying to generalize these functions for the purposes of your dissertation research. '''
+
+		if pop_long == 'target':
+			map_str_ratings_to_numeric(data) 
+
+		if doPrint:
+			# Check fixed ratings 
+			print_coltype(data, condition, platform, pop_long)
+
+		# And now merge ratings data with hsv data
+		consolidate_data(data[pop_long][kind], data[pop_long]['hsv'], platform, pop_long, 'all', data)
+	else:
+		data[pop_long]['all'] = data[pop_long]['hsv']
+
+
 def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points):
 	''' Pulls data from db, cleans, and aggregates. Also creates subsets based on diag/susp date '''
 
@@ -485,9 +604,15 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		
 		print '{} DATA:'.format(pop_long.upper())
 		
-		# get hsv data
+		# get basic data (hsv or tweets...no photo ratings yet)
 		get_basic_data(data, platform, params, conn, pop, pop_long)
 		
+		''' For tweets, additional data are word features, but because they are already in db as gb'd data,
+			we add them in during the make_groupby() process, instead of here.  Photo ratings, on the other hand,
+			are not stored as aggregated data. '''
+		if platform == 'ig': # checks for photo ratings, adds to basic data if exists
+			get_additional_data(data, params, platform, condition, pop, pop_long, conn)
+
 		# aggregate data by groupby types (url, username, created_date)
 		make_groupby(data[pop_long], platform, pop_long, params, gb_types, 
 					 conn, condition, 
@@ -508,7 +633,10 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 def get_pop_unames(params, m, conn, pop):
 	''' Get all usernames for a given population '''
 
-	return pd.read_sql_query(params['q'][pop]['unames'], conn)
+	if params['has_test']:
+		return pd.read_sql_query(params['q'][pop]['unames'], conn)
+	else:
+		return pd.read_sql_query(params['q'][pop]['unames'], conn)
 
 
 def get_photo_ratings(params, conn, pop, doPrint=False):
@@ -735,10 +863,10 @@ def consolidate_data(d, d2, m, pop_long, kind, data):
 
 
 
-def print_coltype(data, condition, m, pop):
+def print_coltype(data, condition, m, pop_long):
 	''' Get data type of all columns in data frame '''
-	x = data[pop]['ratings']
-	print 'Data column types for medium: {}, population: {}, condition: {}'.format(m, pop, condition)
+	x = data[pop_long]['ratings']
+	print 'Data column types for medium: {}, population: {}, condition: {}'.format(m, pop_long, condition)
 	for c in x.columns:
 		print x[c].dtype
 
@@ -1005,7 +1133,7 @@ def corr_plot(df, m, gb_type, varset, print_corrmat=False):
 
 	plt.figure()
 	# Set up the matplotlib figure
-	f, ax = plt.subplots(figsize=(11, 9))
+	f, ax = plt.subplots(figsize=(9, 7))
 
 	# Generate a custom diverging colormap
 	cmap = sns.diverging_palette(220, 10, as_cmap=True)
@@ -1013,7 +1141,7 @@ def corr_plot(df, m, gb_type, varset, print_corrmat=False):
 	# Draw the heatmap with the mask and correct aspect ratio
 	sns.heatmap(corr, mask=mask, cmap=cmap, vmax=1.0,
 				square=True, linewidths=.5, 
-				cbar_kws={"shrink": .5}, ax=ax)
+				cbar_kws={"shrink": .7}, ax=ax)
 	_=plt.title('Correlations among {} Variables'.format(m))
 	plt.show()
 
@@ -1155,7 +1283,8 @@ def pca_explore(pca, X):
 
 
 def pca_model(pca, X_reduced, y, num_pca_comp):
-	''' Shows cross-validated F1 scores using PCA components in logistic regression '''
+	''' Shows cross-validated F1 scores using PCA components in logistic regression 
+		http://stats.stackexchange.com/questions/82050/principal-component-analysis-and-regression-in-python '''
 
 	n = len(X_reduced)
 	kf_10 = cross_validation.KFold(n, n_folds=10, shuffle=True)
@@ -1171,15 +1300,18 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	for i in np.arange(1,num_pca_comp+1):
 		score = cross_validation.cross_val_score(lr, X_reduced[:,:i], y.ravel(), cv=kf_10, scoring='f1').mean()
 		f1.append(score)
-
-	new_num_pca_comp = np.argmax(np.array(f1)) + 1 # redefine num components based on max F1 score
-	print 'num pca comp displayed:', num_pca_comp
-	print 'optimal number of components:', new_num_pca_comp # optimal num components based on max F1 score
 	
+	new_num_pca_comp = np.argmax(np.array(f1)) + 1 # redefine num components based on max F1 score
+	print 'Num pca comp displayed:', num_pca_comp
+	print 'Optimal number of components:', new_num_pca_comp # optimal num components based on max F1 score
+	if new_num_pca_comp > num_pca_comp:
+		print 'Optimal number based on F1 max exceeds Minka MLE...scaling back to Minka'
+		new_num_pca_comp = num_pca_comp
+
 	plt.figure()
 	fig, (ax1, ax2) = plt.subplots(1,2, figsize=(14,5))
 	ax1.plot(f1, '-v')
-	ax2.plot(np.arange(num_pca_comp), f1[1:num_pca_comp+1], '-v')
+	ax2.plot(np.arange(1,num_pca_comp+1), f1[1:num_pca_comp+1], '-v')
 	ax2.set_title('Intercept excluded from plot')
 
 	for ax in fig.axes:
@@ -1220,7 +1352,7 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	if 'tall_plot' in d.keys():
 		tall_plot = d['tall_plot']
 	
-	X = mdata[feats]
+	X = mdata[feats].copy()
 	y = mdata[target]
 
 	cleanX(X)
@@ -1238,9 +1370,27 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 		X_reduced, num_pca_comp = pca_explore(pca, X)
 		num_pca_comp = pca_model(pca, X_reduced, y, num_pca_comp)
 		pca_report(pca, model_feats)
-		X = X_reduced[:,0:num_pca_comp+1].copy() # we do all subsequent modeling with the best PCA component vectors
-		model_feats = pd.Series(['pca_{}'.format(x) for x in np.arange(num_pca_comp+1)])
-		
+
+		# we do all subsequent modeling with the best PCA component vectors
+		if num_pca_comp + 1 > X_reduced.shape[1]:
+			max_ix = X_reduced.shape[1] 
+		else:
+			max_ix = num_pca_comp+1
+
+		X = X_reduced[:,0:max_ix].copy() 
+		model_feats = pd.Series(['pca_{}'.format(x) for x in np.arange(max_ix)])
+		#testing
+		#print 'num_pca_comp:', num_pca_comp
+		#print 'X_reduced shape:', X_reduced.shape 
+		#print np.arange(0,max_ix)
+		#print np.arange(1,max_ix)
+		#print 'PCA X shape:', X.shape
+		#print 'PCA model_feats shape:', model_feats.shape 
+		#print 'PCA model_feats:', model_feats
+
+	else:
+		pca = None
+
 	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
 	
 	fits = {}
@@ -1252,7 +1402,7 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	for ctype in clf_types:
 		fits[ctype]['clf'].fit(X_train,y_train)
 			
-	if pca:
+	if use_pca:
 		print 
 		print 'NOTE: ALL MODELS ON THIS RUN USE PCA COMPONENTS!'
 		print
@@ -1367,9 +1517,9 @@ def master_actions(master, target, control, condition, m, params, gb_type, repor
 					'tall_plot':aparams['tall_plot']
 				   }
 
-		output = make_models(model_df, clf_types=clfs, 
-							 excluded_set=params['model_vars_excluded'][m][gb_type],
-							 use_pca=use_pca)
+		output, pca = make_models(model_df, clf_types=clfs, 
+								  excluded_set=params['model_vars_excluded'][m][gb_type],
+								  use_pca=use_pca)
 
 		for k in output.keys():
 			master['model'][gb_type][k] = output[k]
@@ -1494,6 +1644,15 @@ def all_features(data, tunit, condition):
 	return pd.Series(result)
 
 
+def create_word_feats_wrapper(pop_longs, gb_types, data, condition, conn, write_to_db, testing):
+	''' Wraps iterators around create_word_feats for each type of pop/gb combo '''
+
+	for pop_long in pop_longs:
+		for tunit in gb_types:
+			print 'In {} :: {}'.format(pop_long,tunit)
+			create_word_feats(data[pop_long], tunit, condition, conn, write_to_db=True, testing=False)
+
+
 def create_word_feats(df, tunit, condition, conn, write_to_db=False, testing=False):
 	
 	if 'word_feats' not in df.keys():
@@ -1535,14 +1694,14 @@ def select_gmm(X):
 	n_components_range = range(1, 7)
 	cv_types = ['spherical', 'tied', 'diag', 'full']
 	for cv_type in cv_types:
-	    for n_components in n_components_range:
-	        # Fit a mixture of Gaussians with EM
-	        gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
-	        gmm.fit(X)
-	        bic.append(gmm.bic(X))
-	        if bic[-1] < lowest_bic:
-	            lowest_bic = bic[-1]
-	            best_gmm = gmm
+		for n_components in n_components_range:
+			# Fit a mixture of Gaussians with EM
+			gmm = mixture.GMM(n_components=n_components, covariance_type=cv_type)
+			gmm.fit(X)
+			bic.append(gmm.bic(X))
+			if bic[-1] < lowest_bic:
+				lowest_bic = bic[-1]
+				best_gmm = gmm
 
 	bic = np.array(bic)
 	color_iter = itertools.cycle(['gray', 'red', 'purple', 'blue'])
@@ -1552,15 +1711,15 @@ def select_gmm(X):
 	plt.figure(figsize=(8,6))
 	# Plot the BIC scores
 	for i, (cv_type, color) in enumerate(zip(cv_types, color_iter)):
-	    xpos = np.array(n_components_range) + .2 * (i - 2)
-	    bars.append(plt.bar(xpos, bic[i * len(n_components_range):
-	                                  (i + 1) * len(n_components_range)],
-	                        width=.2, color=color, alpha=0.7))
+		xpos = np.array(n_components_range) + .2 * (i - 2)
+		bars.append(plt.bar(xpos, bic[i * len(n_components_range):
+									  (i + 1) * len(n_components_range)],
+							width=.2, color=color, alpha=0.7))
 	plt.xticks(n_components_range)
 	plt.ylim([bic.min() * 1.01 - .01 * bic.max(), bic.max()])
 	plt.title('BIC score per model')
 	xpos = np.mod(bic.argmin(), len(n_components_range)) + .65 +\
-	    .2 * np.floor(bic.argmin() / len(n_components_range))
+		.2 * np.floor(bic.argmin() / len(n_components_range))
 	plt.text(xpos, bic.min() * 0.97 + .03 * bic.max(), '*', fontsize=14)
 	plt.xlabel('Number of components')
 	plt.legend([b[0] for b in bars], cv_types)
