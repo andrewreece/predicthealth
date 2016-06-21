@@ -4,6 +4,8 @@ import numpy as np
 from scipy import linalg
 import itertools
 import datetime
+import pytz
+from email.utils import parsedate_tz, mktime_tz
 
 from matplotlib import pyplot as plt
 import matplotlib as mpl
@@ -35,8 +37,11 @@ from sklearn.decomposition import PCA
 
 from scipy.stats import ttest_ind as ttest
 from scipy.stats import ttest_rel
+import scipy.stats as stats
 
 from statsmodels.sandbox.stats.multicomp import multipletests
+import statsmodels.api as sm
+import statsmodels.tools.tools as smtools
 
 from labMTsimple.speedy import *
 
@@ -58,7 +63,7 @@ def analysis_specifications(pl, condition):
 			'tw':'twitter'
 		},
 		'fields':{
-			'ig':'url',
+			'ig':'url, comment_count, like_count',
 			'tw':'id, text, has_url'
 		}
 	}
@@ -88,8 +93,8 @@ def analysis_specifications(pl, condition):
 		},
 		'photos_rated':{
 			'depression':True,
-			'ptsd':False,
-			'pregnancy':False,
+			'ptsd':True,
+			'pregnancy':True,
 			'cancer':False
 		}
 	}
@@ -102,10 +107,10 @@ def analysis_specifications(pl, condition):
 
 def define_params(condition, test_name, test_cutoff, impose_cutoff,
 				  platform, platform_long, fields,
-				  photos_rated, has_test, ratings_min=3):
+				  photos_rated, has_test, additional_data, ratings_min=3):
 	''' Creates params dict for queries and other foundational parameters used throughout analysis '''
 
-	if photos_rated and (platform=='ig'):
+	if photos_rated and (platform=='ig') and additional_data:
 		ratings_clause = ' and ratings_ct >= {}'.format(ratings_min)
 	else:
 		ratings_clause = ""
@@ -152,47 +157,32 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'agg_func':{
 				'ig': {
 					'post':{
-						'happy':		['mean','var'],
-						'sad':			['mean','var'],
-						'interesting':	['mean','var'],
-						'likable':		['mean','var'],
-						'one_word':		' '.join,
-						'description':	'    '.join,
-						'rater_id':		'count',
+						'url': 			'first',
 						'username':		'first',
 						'created_date':	'first',
-						'target':		'first',
 						'hue':			'first',
 						'saturation':	'first',
 						'brightness':	'first',
 						'before_diag':	'first',
-						'before_susp':	'first'
+						'before_susp':	'first',
+						'comment_count':'first',
+						'like_count':	'first'
 					},
-					'username':{'url':				'count',
-								'likable|mean':		['mean','var'],
-								'interesting|mean':	['mean','var'],
-								'happy|mean':		['mean','var'],
-								'sad|mean':			['mean','var'],
-								'one_word':			'_|_'.join,
-								'description':		'__|__'.join,
-								'target':			'first',
+					'username':{'url|count':		'mean',
 								'hue':				'mean',
 								'saturation':		'mean',
-								'brightness':		'mean'
+								'brightness':		'mean',
+								'comment_count': 	'mean',
+								'like_count':		'mean'
 					},
 					'created_date':{'url':				'count',
-									'likable|mean':		['mean','var'],
-									'interesting|mean':	['mean','var'],
-									'happy|mean':		['mean','var'],
-									'sad|mean':			['mean','var'],
-									'one_word':			'_|_'.join,
-									'description':		'__|__'.join,
-									'target':			'first',
 									'hue':				'mean',
 									'saturation':		'mean',
 									'brightness':		'mean',
 									'before_diag':		'first',
-									'before_susp':		'first'
+									'before_susp':		'first',
+									'comment_count': 	'mean',
+									'like_count':		'mean'
 					}
 				},
 				'tw':{
@@ -239,26 +229,32 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'vars':{
 				'ig': {
 					'post':{ 
-						'means':['likable|mean','interesting|mean','sad|mean','happy|mean',
-								 'hue','brightness','saturation'],
-						'full':	['likable|mean','interesting|mean','sad|mean','happy|mean',
+						'means':['likable','interesting','sad','happy',
+								 'hue','saturation','brightness','comment_count','like_count'],
+						'full':	['likable','interesting','sad','happy',
 								 'likable|var','interesting|var','sad|var','happy|var',
-								 'hue','saturation','brightness','before_diag','before_susp','target']
+								 'hue','saturation','brightness','comment_count','like_count','before_diag','before_susp','target'],
+						'no_addtl_means':['hue','saturation','brightness'],
+						'no_addtl_full':['hue','saturation','brightness','before_diag','before_susp','target']
 						},
 					'username':{
-						'means':['likable|mean|mean','interesting|mean|mean','sad|mean|mean','happy|mean|mean',
-								 'hue|mean','saturation|mean','brightness|mean'],
-						'full':	['likable|mean|mean','interesting|mean|mean','sad|mean|mean','happy|mean|mean',
-								 'likable|mean|var','interesting|mean|var','sad|mean|var','happy|mean|var',
-								 'hue|mean','saturation|mean','brightness|mean','one_word|join','description|join','target']
+						'means':['likable','interesting','sad','happy',
+								 'hue','saturation','brightness','comment_count','like_count','url'],
+						'full':	['likable','interesting','sad','happy',
+								 'likable|var','interesting|var','sad|var','happy|var',
+								 'hue','saturation','brightness','comment_count','like_count','url','one_word','description','target'],
+						'no_addtl_means':['hue','saturation','brightness'],
+						'no_addtl_full':['hue','saturation','brightness','target']
 						},
 					'created_date':{
-						'means':['likable|mean|mean','interesting|mean|mean','sad|mean|mean','happy|mean|mean',
-								 'hue|mean','saturation|mean','brightness|mean'],
-						'full':['likable|mean|mean','interesting|mean|mean','sad|mean|mean','happy|mean|mean',
-								'likable|mean|var','interesting|mean|var','sad|mean|var','happy|mean|var',
-								'hue|mean','saturation|mean','brightness|mean','one_word|join','description|join',
-								'before_diag','before_susp','target']
+						'means':['likable','interesting','sad','happy',
+								 'hue','saturation','brightness','url|count','comment_count','like_count'],
+						'full':['likable','interesting','sad','happy',
+								'likable|var','interesting|var','sad|var','happy|var',
+								'hue','saturation','brightness','url|count','comment_count','like_count','one_word','description',
+								'before_diag','before_susp','target'],
+						'no_addtl_means':['hue','saturation','brightness'],
+						'no_addtl_full':['hue','saturation','brightness','before_diag','before_susp','target']
 						}
 				},
 				'tw':{
@@ -467,15 +463,15 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			},
 			'model_vars_excluded':{
 				'ig': {
-					'post':['username','username|first','url','rater_id|count','likable|var',
+					'post':['username','url','rater_id|count','likable|var',
 							'description|join', 'interesting|var',
 							'sad|var', 'one_word|join', 'happy|var','before_diag','before_susp','target'],
-					'username':['username','url|count','interesting|mean|var','sad|mean|var',
-								'happy|mean|var','likable|mean|var', 
-								'one_word|join','description|join', 'target'],
-					'created_date':['username','url|count','interesting|mean|var','sad|mean|var',
-									'happy|mean|var','likable|mean|var', 
-									'one_word|join','description|join','before_diag','before_susp','target']
+					'username':['username','interesting|var','sad|var',
+								'happy|var','likable|var', 
+								'one_word','description', 'target'],
+					'created_date':['username','interesting|var','sad|var',
+									'happy|var','likable|var', 
+									'one_word','description','before_diag','before_susp','target']
 				},
 				'tw':{
 					'weekly':['user_id','before_diag','before_susp','target'],
@@ -487,8 +483,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			},
 			'master_drop_subset':{
 				'ig':{'post':['hue','saturation','brightness'],
-					  'username':['hue|mean','saturation|mean','brightness|mean'],
-					  'created_date':['hue|mean','saturation|mean','brightness|mean']
+					  'username':['hue','saturation','brightness'],
+					  'created_date':['hue','saturation','brightness']
 					  },
 				'tw':{'created_date':[],
 					  'user_id':[],
@@ -499,12 +495,38 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'has_test':has_test 
 		}
 
+	if (platform == 'ig') and additional_data:
+		params['agg_func'][platform]['post'].update(			
+			{'rater_id':	'count',
+			'happy':		['mean','var'],
+			'sad':			['mean','var'],
+			'interesting':	['mean','var'],
+			'likable':		['mean','var'],
+			'one_word':		' '.join,
+			'description':	'    '.join}
+		)
+		params['agg_func'][platform]['username'].update(
+			{'likable':		['mean','var'],
+			'interesting':	['mean','var'],
+			'happy':		['mean','var'],
+			'sad':			['mean','var'],
+			'one_word':		'_|_'.join,
+			'description':	'__|__'.join}
+		)
+		params['agg_func'][platform]['created_date'].update(
+			{'likable':		['mean','var'],
+			'interesting':	['mean','var'],
+			'happy':		['mean','var'],
+			'sad':			['mean','var'],
+			'one_word':		'_|_'.join,
+			'description':	'__|__'.join}
+		)
 	return params 
 
 
 def report_sample_sizes(params, conn, cond, plat_long, test_cutoff, 
-						test='', show_all=False,
-						table=['depression','pregnancy','ptsd','cancer']):
+						test=None, show_all=False,
+						table=['depression','pregnancy','ptsd','cancer'], extra_field=''):
 	''' Printout of sample sizes across conditions and thresholds '''
 
 	print 'SAMPLE SIZES: target populations'
@@ -514,9 +536,10 @@ def report_sample_sizes(params, conn, cond, plat_long, test_cutoff,
 		table = [cond] # if not show_all, then just show current condition being analyzed
 
 	for t in table:
-		extra_field = '{}'.format(test)
-			
-		q = 'select platform, {} from {} where username is not null and diag_year is not null and disqualified=0'.format(extra_field, t)
+		if test:
+			extra_field = ', {}'.format(test)
+
+		q = 'select platform{} from {} where username is not null and diag_year is not null and disqualified=0'.format(extra_field, t)
 		samp = pd.read_sql_query(q,conn)
 		print 'TARGET :: {cond} / {plat} total:'.format(cond=t.upper(),plat=plat_long.upper()),samp.ix[samp.platform=='{}'.format(plat_long),:].shape[0]
 		if t in ['ptsd','depression']:
@@ -551,11 +574,11 @@ def make_data_dict(params, condition, test_name, conn, doPrint=False):
 	return data 
 
 
-def get_additional_data(data, params, platform, condition, pop, pop_long, conn, doPrint=False):
+def get_additional_data(data, params, platform, condition, pop, pop_long, additional_data, conn, doPrint=False):
 	''' For Instagram: Checks if this condition has photo ratings, if so, adds to basic (hsv) data. '''
 
 	# this if- block deals with conditions where photos have been rated
-	if params['rated']: 
+	if params['rated'] and additional_data: 
 		
 		kind = 'ratings'
 		
@@ -575,7 +598,7 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, conn, 
 			ixs = find_chartype(data,'interesting')
 
 		''' Warning: This isn't very robust - you have this conditional set here because you discovered it's only the 
-			target group photo ratings that have the problematic "strings for photo ratings" issue.  
+			depression target group photo ratings that have the problematic "strings for photo ratings" issue.  
 
 			A more generalized way to go about this would be to create a flag from find_chartype() that identifies whether 
 			map_str_ratings_to_numeric() is necessary...but even then, the custom mapping you created is really case specific 
@@ -583,8 +606,12 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, conn, 
 			
 			It's probably not worth trying to generalize these functions for the purposes of your dissertation research. '''
 
-		if pop_long == 'target':
+		# quirky corrections
+		if (pop_long == 'target') & (condition == 'depression'):
 			map_str_ratings_to_numeric(data) 
+		elif (pop_long == 'control') & (condition == 'ptsd'):
+			data[pop_long]['ratings'].ix[data[pop_long]['ratings'].sad=='g','sad'] = 1.0
+			data[pop_long]['ratings'].sad = data[pop_long]['ratings'].sad.astype(float)
 
 		if doPrint:
 			# Check fixed ratings 
@@ -593,10 +620,36 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, conn, 
 		# And now merge ratings data with hsv data
 		consolidate_data(data[pop_long][kind], data[pop_long]['hsv'], platform, pop_long, 'all', data)
 	else:
-		data[pop_long]['all'] = data[pop_long]['hsv']
+		d = data[pop_long]['hsv']
+		d2 = get_meta(params, conn, pop)
+
+		# Now merge the meta_ig data with the photo_ratings_depression data
+		consolidate_data(d2, d, platform, pop_long, 'all', data)
 
 
-def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points):
+def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
+	''' Cuts all data from participants with a low number of posts.
+		'Low' is defined as fewer than (mean_posts_within_pop - 0.5*std_posts_within_pop) '''
+
+	df = data[pop_long]['all']
+	d = (df.groupby(['user_id','url'])
+		   .count()
+		   .reset_index()
+		   .groupby('user_id')
+		   .count()
+		)
+	offset = std_frac * d.url.std()
+	cutoff = d.url.mean() - offset
+	cutdf = d.ix[d.url >= cutoff,:]
+	if doPrint:
+		print 'target pop before cut:', d.shape
+		print 'target pop after cut:', cutdf.shape
+	new_ids = cutdf.reset_index().user_id
+	data[pop_long]['all'] = df.ix[df.user_id.isin(new_ids),:].copy()
+
+
+def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points,
+					 posting_cutoff=False, additional_data=False, limit_date_range=False):
 	''' Pulls data from db, cleans, and aggregates. Also creates subsets based on diag/susp date '''
 
 	# collect target and control data
@@ -605,17 +658,20 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		print '{} DATA:'.format(pop_long.upper())
 		
 		# get basic data (hsv or tweets...no photo ratings yet)
-		get_basic_data(data, platform, params, conn, pop, pop_long)
+		get_basic_data(data, platform, params, conn, pop, pop_long, limit_date_range)
 		
 		''' For tweets, additional data are word features, but because they are already in db as gb'd data,
 			we add them in during the make_groupby() process, instead of here.  Photo ratings, on the other hand,
 			are not stored as aggregated data. '''
-		if platform == 'ig': # checks for photo ratings, adds to basic data if exists
-			get_additional_data(data, params, platform, condition, pop, pop_long, conn)
-
+		if (platform == 'ig'):
+			get_additional_data(data, params, platform, condition, pop, pop_long, additional_data, conn)
+			
+		if posting_cutoff and (platform == 'ig'):
+			cut_low_posters(data, pop_long)
+			
 		# aggregate data by groupby types (url, username, created_date)
 		make_groupby(data[pop_long], platform, pop_long, params, gb_types, 
-					 conn, condition, 
+					 conn, condition, additional_data,
 					 doPrint=True)
 
 		if pop_long == 'target':
@@ -627,16 +683,13 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 				for turn_point in turn_points:
 					# aggregate data by groupby types (url, username, created_date)
 					make_groupby(data[pop_long][period][turn_point], platform, pop_long, params, gb_types, 
-								 conn, condition, period = period, turn_point=turn_point)  
+								 conn, condition, additional_data, period = period, turn_point=turn_point)  
 
 
 def get_pop_unames(params, m, conn, pop):
 	''' Get all usernames for a given population '''
 
-	if params['has_test']:
-		return pd.read_sql_query(params['q'][pop]['unames'], conn)
-	else:
-		return pd.read_sql_query(params['q'][pop]['unames'], conn)
+	return pd.read_sql_query(params['q'][pop]['unames'], conn)
 
 
 def get_photo_ratings(params, conn, pop, doPrint=False):
@@ -678,14 +731,14 @@ def get_meta(params, conn, pop, doPrint=False):
 	return d
 
 
-def get_basic_data(data, m, params, conn, pop, pop_long, doPrint=False):
+def get_basic_data(data, m, params, conn, pop, pop_long, limit_date_range=False, doPrint=False):
 	''' gets the set of variables that all observations have filled (eg. hsv for photos, tweet data for twitter)
 		this is basically just a wrapper for get_hsv() and get_tweet_metadata() '''
 
 	if m == 'ig':
 		get_hsv(data, m, params, conn, pop, pop_long)
 	elif m == 'tw':
-		get_tweet_metadata(data, m, params, conn, pop, pop_long, doPrint)
+		get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range, doPrint=doPrint)
 
 
 def get_word_feats(params, conn, pop_long, condition, tunit, key='word_features'):
@@ -705,6 +758,8 @@ def get_word_feats(params, conn, pop_long, condition, tunit, key='word_features'
 	
 	to_drop = ['table_id','depression','no_depression','pregnancy','no_pregnancy','ptsd','no_ptsd','cancer','no_cancer']
 	wf.drop(to_drop, 1, inplace=True)
+
+	Imputer(missing_values='0', strategy='mean', axis=0, verbose=0, copy=True)
 	return wf 
 
 
@@ -746,9 +801,15 @@ def count_words_in_tweet(d):
 	d['word_count'] = d.text.apply(lambda x: len(x.split()))
 
 
-def get_tweet_metadata(data, m, params, conn, pop, pop_long,
-					   doPrint=False, key='tweets'):
-	''' Collects all Twitter metadata for a given population, and does some cleaning '''
+def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=False, 
+					   t_maxback=-(365 + 60), t_maxfor=365, c_maxback=365*2, doPrint=False,
+					   key='tweets'):
+	''' Collects all Twitter metadata for a given population, and does some cleaning.
+		If limit_date_range == True, then posts are limited to within maxback/maxfor days.
+		For target populations, these limits are based on diag/susp date. 
+		For control populations, limits extend back from present day (although they should really start 
+		from the date they were collected...at some point we will be much father into the future than 
+		the last date we collected their data!'''
 
 	unames = get_pop_unames(params, m, conn, pop)
 	meta = get_meta(params, conn, pop, doPrint)
@@ -769,21 +830,26 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long,
 
 	all_tweets.created_date = pd.to_datetime(all_tweets.created_date) # convert date field to explicit date type
 
-	if pop_long == 'target':
-		max_backward = -(365 + 60) # one year back plus 60 days to make sure we're including a full year back from suspected 
-		max_forward = 365
-		mask = (all_tweets.from_diag >= max_backward) & (all_tweets.from_diag <= max_forward)
+	''' To restrict the date range of tweets analyzed, we can set the t_maxback, t_maxfor, and c_maxback 
+		variables, and set limit_date_range=True. Otherwise, we use all tweets. '''
+	if limit_date_range:
+		if pop_long == 'target':
+			max_backward = t_maxback # one year back plus 60 days to make sure we're including a full year back from suspected 
+			max_forward = t_maxfor
+			mask = (all_tweets.from_diag >= max_backward) & (all_tweets.from_diag <= max_forward)
+		
+		elif pop_long == 'control':
+			day_span = c_maxback # to approximate going one year back and forwards from diag_date in target pop
+			dfp = [(datetime.datetime.now() - d).days for d in all_tweets.created_date]
+			all_tweets['days_from_present'] = dfp
+			mask = (all_tweets.groupby('username')['days_from_present']
+							  .apply(lambda x: x.nsmallest(day_span))
+							  .reset_index()['level_1'] # level_1 gets row indices from all_tweets to use as mask
+					)
+		tweets = all_tweets.ix[ mask, : ].copy()
+	else:
+		tweets = all_tweets.copy()
 	
-	elif pop_long == 'control':
-		day_span = 365*2 # to approximate going one year back and forwards from diag_date in target pop
-		dfp = [(datetime.datetime.now() - d).days for d in all_tweets.created_date]
-		all_tweets['days_from_present'] = dfp
-		mask = (all_tweets.groupby('username')['days_from_present']
-						  .apply(lambda x: x.nsmallest(day_span))
-						  .reset_index()['level_1'] # level_1 gets row indices from all_tweets to use as mask
-				)
-
-	tweets = all_tweets.ix[ mask, : ].copy()
 
 	
 	if doPrint:
@@ -793,7 +859,7 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long,
 	data[pop_long]['tweets'] = tweets 
 
 
-def get_hsv(data, m, params, conn, pop, pop_long, doPrint=False):
+def get_hsv(data, m, params, conn, pop, pop_long, doPrint=True, cols=['url','hue','saturation','brightness']):
 	''' Gets HSV values for Instagram photos '''
 
 	hsv = pd.read_sql_query(params['q']['all_hsv'],conn)
@@ -809,7 +875,7 @@ def get_hsv(data, m, params, conn, pop, pop_long, doPrint=False):
 	if doPrint:
 		print 'Num HSV-rated photos with URL in {}, before dropping duplicates:'.format(pop_long.upper()), hsv.ix[hsv.url.isin(urls),:].shape[0]
 
-	data[pop_long]['hsv'] = hsv.ix[hsv.url.isin(urls),['url','hue','saturation','brightness']].drop_duplicates(subset='url').copy()
+	data[pop_long]['hsv'] = hsv.ix[hsv.url.isin(urls),cols].drop_duplicates(subset='url').copy()
 
 	if doPrint:
 		print 'Num HSV-rated photos with URL in {}, after dropping duplicates:'.format(pop_long.upper()), data[pop_long]['hsv'].shape[0]
@@ -829,7 +895,7 @@ def mark_before_after(d, pop_long):
 def consolidate_data(d, d2, m, pop_long, kind, data):
 	''' merges dfs, adds 0/1 class indicator variable '''
 
-	data[pop_long][kind] = d.merge(d2, how='left',on='url')
+	data[pop_long][kind] = d.merge(d2, how='inner',on='url')
 
 	if pop_long == 'target':
 		cl = 1
@@ -893,7 +959,7 @@ def map_str_ratings_to_numeric(data):
 				'Kind of ':3,'Kind of':3,
 				'Sure':4,
 				'Very':5},
-			'sad':{'Not':0,'None':0,'Not sad':0,'Not at all':0,'Very little':1,'Not really':1,'Slightly':2,'Kind of ':3,'Kind of':3,'Sure':4,'Very':5},
+			'sad':{'Not':0,'None':0,'Not sad':0,'Not at all':0,'g':1,'Very little':1,'Not really':1,'Slightly':2,'Kind of ':3,'Kind of':3,'Sure':4,'Very':5},
 			'likable':{'Not':0,'None':0,'Not sad':0,'Not at all':0,'Very little':1,'Not really':1,'Slightly':2,'Kind of ':3,'Kind of':3,'Sure':4,'Very':5},
 			'interesting':{'Not':0,'None':0,'Not sad':0,'Not at all':0,'Very little':1,'Not really':1,'Slightly':2,'Kind of ':3,'Kind of':3,'Sure':4,'Very':5}}
 
@@ -950,15 +1016,18 @@ def add_class_indicator(gbdf, pop, doPrint=False):
 
 
 def make_groupby(df, m, pop, params, gb_types, 
-				 conn=None, condition=None, 
-				 period=None, turn_point=None, doPrint=False):
+				 conn=None, condition=None, additional_data=False,
+				 period=None, turn_point=None, username_gb='created_date',doPrint=False):
 	''' Create aggregated datasets 
 
 		We collect mean and variance for each numerical measure, 
 		and we combine all of the text descriptions
 
 		Note: This kind of groupby results in a MultiIndex colum format (at least where we have [mean,var] aggs).  
-		The code after the actual groupby flattens the column hierarchy.'''
+		The code after the actual groupby flattens the column hierarchy.
+
+		Note: username_gb parameter determines whether username gb df is grouped by posts or created_date.
+		Analytical results may vary highly based on this choice. '''
 
 	df['gb'] = {}
 	
@@ -1005,7 +1074,7 @@ def make_groupby(df, m, pop, params, gb_types,
 
 		elif (gb_type == 'username') and (m=='ig'):
 			gb_list = ['username']
-			to_group_df = df['gb'][grouped] # this groupby is acting on the gb-url aggregate df
+			to_group_df = df['gb'][username_gb] # this groupby is acting on the gb-created_date aggregate df
 
 		elif (gb_type == 'user_id') and (m=='tw'):
 			gb_list = ['user_id']
@@ -1016,6 +1085,10 @@ def make_groupby(df, m, pop, params, gb_types,
 		#print 'ROUND:', m, pop, gb_type 
 		#print 'to_group_df shape:', to_group_df.shape
 		#print to_group_df.columns
+		#print 'agg cols:'
+		#print params['agg_func'][m][gb_type]
+		#print to_group_df.head()
+		#print 
 
 		df['gb'][gb_type] = (to_group_df.groupby(gb_list)
 										.agg(params['agg_func'][m][gb_type])
@@ -1025,23 +1098,30 @@ def make_groupby(df, m, pop, params, gb_types,
 		#print 'columns:', df['gb'][gb_type].columns
 
 		if m == 'ig':
-			# collapses multiindex columns into |-separated names
-			new_colname = ['%s%s' % (a, '|%s' % b if b else '') for a, b in df['gb'][gb_type].columns]
-			
-			df['gb'][gb_type].columns = new_colname
-			# bring url into column set (instead of as row index)
-			df['gb'][gb_type].reset_index(inplace=True)
+			if additional_data:
+				# collapses multiindex columns into |-separated names
+				new_colname = ['%s%s' % (a, '|%s' % b if b else '') for a, b in df['gb'][gb_type].columns]
+				
+				df['gb'][gb_type].columns = new_colname
+				# bring url into column set (instead of as row index)
+				df['gb'][gb_type].reset_index(inplace=True)
 
-			if 'created_date|first' in df['gb'][gb_type].columns:
-				df['gb'][gb_type].rename(columns={'created_date|first':'created_date',
-												  'one_word|join':'one_word',
-												  'description|join':'description',
-												  'hue|first':'hue',
-												  'saturation|first':'saturation',
-												  'brightness|first':'brightness'}, inplace=True)
-			for field in ['target|first','before_diag|first','before_susp|first']:
-				if field in df['gb'][gb_type].columns:
-					df['gb'][gb_type].rename(columns={field:field.split("|")[0]}, inplace=True)
+				if 'created_date|first' in df['gb'][gb_type].columns:
+					df['gb'][gb_type].rename(columns={'created_date|first':'created_date',
+													  'one_word|join':'one_word',
+													  'description|join':'description'}, inplace=True)
+				for field in df['gb'][gb_type].columns:
+					if re.search('mean|first|join',field):
+						df['gb'][gb_type].rename(columns={field:field.split("|")[0]}, inplace=True)
+
+				# removes duplicate columns caused by reset_index()
+				# http://stackoverflow.com/a/36513262/2799941
+				Cols = list(df['gb'][gb_type].columns)
+				for i,item in enumerate(df['gb'][gb_type].columns):
+				    if item in df['gb'][gb_type].columns[:i]: Cols[i] = "toDROP"
+				df['gb'][gb_type].columns = Cols
+				if "toDROP" in Cols:
+					df['gb'][gb_type] = df['gb'][gb_type].drop("toDROP",1)
 
 			add_class_indicator(df['gb'][gb_type], pop)
 
@@ -1085,31 +1165,38 @@ def make_groupby(df, m, pop, params, gb_types,
 		print 
 
 
-def merge_to_master(master, target, control, m, varset, gb_type, doPrint=False):
+def merge_to_master(master, target, control, m, varset, gb_type, additional_data, doPrint=False):
 	''' merge target and control dfs into master df '''
 
 	c = control[gb_type]
 	t = target[gb_type]
 	#subset = params['master_subset'][m][gb_type]
 	master[gb_type] = pd.concat([c,t], axis=0)#.dropna(subset=subset)
-	master[gb_type] = master[gb_type][ varset[m][gb_type]['full'] ]
+	if additional_data:
+		vlist = 'full'
+	else:
+		vlist = 'no_addtl_full'
+	master[gb_type] = master[gb_type][ varset[m][gb_type][vlist] ]
 
 	if doPrint:
 		print 'Master {} {} nrows:'.format(m.upper(), gb_type.upper()), master[gb_type].shape[0]
 
 
-def compare_density(df, m, gbtype, varset, ncols=4):
+def compare_density(df, m, gbtype, varset, additional_data, ncols=4):
 	''' Overlays density plots of target vs control groups for selected aggregation type '''
 
 	print 'target vs control for {} {}-groupby:'.format(m.upper(), gbtype.upper())
 	plt.figure()
 	gb = df[gbtype].groupby('target')
-
-	numvars = float(len(varset[m][gbtype]['means']))
+	if additional_data:
+		vlist = 'means'
+	else:
+		vlist = 'no_addtl_means'
+	numvars = float(len(varset[m][gbtype][vlist]))
 	nrows = np.ceil(numvars/ncols).astype(int)
 	fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(14, 3*nrows), tight_layout=True)
 
-	for ax, p in zip(axes.ravel(), varset[m][gbtype]['means']):
+	for ax, p in zip(axes.ravel(), varset[m][gbtype][vlist]):
 		for k, v in gb[p]:
 			try:
 				sns.kdeplot(v, ax=ax, label=str(k)+":"+v.name)
@@ -1118,11 +1205,14 @@ def compare_density(df, m, gbtype, varset, ncols=4):
 	plt.show()
 
 
-def corr_plot(df, m, gb_type, varset, print_corrmat=False):
+def corr_plot(df, m, gb_type, varset, additional_data, print_corrmat=False):
 
 	print 'Correlation matrix:'
-
-	metrics = varset[m][gb_type]['means']
+	if additional_data:
+		vlist = 'means'
+	else:
+		vlist = 'no_addtl_means'
+	metrics = varset[m][gb_type][vlist]
 	corr = df[gb_type][metrics].corr().round(2)
 	corr.columns = [x.split("|")[0] for x in corr.columns]
 	corr.index = [x.split("|")[0] for x in corr.index]
@@ -1463,7 +1553,7 @@ def ttest_output(a, b, varset, ttype, correction=True, alpha=0.05, method='bonfe
 	return test, pvals
 
 
-def ttest_wrapper(master, gb_type, varset, split_var='target', ttype='ind'):
+def ttest_wrapper(master, gb_type, varset, additional_data, split_var='target', ttype='ind'):
 	''' formatting wrapper for ttest_output() '''
 
 	print 'UNIT OF MEASUREMENT:', gb_type
@@ -1471,11 +1561,98 @@ def ttest_wrapper(master, gb_type, varset, split_var='target', ttype='ind'):
 
 	a = master[gb_type].ix[master[gb_type][split_var]==0,:]
 	b = master[gb_type].ix[master[gb_type][split_var]==1,:]
+	if additional_data:
+		vlist = 'means'
+	else:
+		vlist = 'no_addtl_means'
+	return ttest_output(a, b, varset[gb_type][vlist], ttype)
 
-	return ttest_output(a, b, varset[gb_type]['means'], ttype)
+
+def compare_filters(data, conn, show_figs=True):
+	''' Chi2, plotting comparisons of Instagram filter use between target and control pops '''
+
+	metaig = pd.read_sql_query('select * from meta_ig', conn)
+	cids = data['control']['all'].user_id
+	tids = metaig.ix[metaig.d_from_diag_depression.notnull(),'instagram_user_id']
+	tfilt = metaig.ix[metaig.instagram_user_id.isin(tids),['username','filter']]
+	cfilt = metaig.ix[metaig.instagram_user_id.isin(cids),['username','filter']]
+	tfilt['target'] = 1
+	cfilt['target'] = 0
+	filts = pd.concat([tfilt,cfilt], axis=0)
+
+	def get_prop(x, tsh = tfilt.shape[0], csh = cfilt.shape[0]):
+		''' Gets proportion that a filter was used among all members of a given pop (target/control) 
+			We thought to limit analysis based on minimum proportion, but ended up going with raw counts,
+			so this function and filtprop df are not really necessary anymore. '''
+		return pd.Series([round(x[0] / float(csh),4), round(x[(1)] / float(tsh),4)])
+
+	filtct = filts.groupby(['target','filter']).count().unstack('target')
+	filtct.columns = ['control','target']
+	filtprop = filtct.apply(get_prop,axis=1)
+
+	
+	filtprop.columns = ['control','target']
+	filtct_chi2 = filtct.ix[(filtct.control>=5) & (filtct.target>=5)] # we need >= 5 obs per cell for chi2
+
+	print 'filters that missed the cut:',filtct.index[~filtct.index.isin(filtct_chi2.index)].astype(str).values
+
+	#above1pct = filtprop.ix[(filtprop.target > 0.01)&(filtprop.control > 0.01),:].index
+	#filtct_chi2 = filtct.ix[filtct.index.isin(above1pct),:]
+	chi2 = stats.chi2_contingency(observed=filtct_chi2)
+	filtct_chi2expect = pd.DataFrame(chi2[3], columns=['control','target'], index=filtct_chi2.index)
+	filtct_chi2offset = filtct_chi2 - filtct_chi2expect 
+
+	print 'chi2 stats comparing Instagram filters:'
+	print 'chi2 value:',chi2[0]
+	print 'p-value:',chi2[1]
+	print 'deg.f.:',chi2[2]
+
+	if show_figs:
+		plt.figure()
+		filtct_chi2.sort_values('target',ascending=False).plot(kind='bar', figsize=(16,8), fontsize=14)
+		plt.title('Instagram filter frequency counts (target=depressed)', fontsize=18)
+
+		plt.figure()
+		filtct_chi2offset.sort_values('target',ascending=True).plot(kind='bar', figsize=(16,8), fontsize=14)
+		plt.title('Instagram filter frequency count Chi2 offset (observed-expected)', fontsize=18)
+
+		plt.figure()
+		filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values('target',ascending=True).plot(kind='bar', figsize=(16,8), fontsize=14)
+		plt.title('Instagram filter frequency count Chi2 offset (observed-expected), Normal excluded', fontsize=18)
 
 
-def master_actions(master, target, control, condition, m, params, gb_type, report, aparams, clfs, 
+def logreg_output(dm, resp):
+	''' Performs frequentist logistic regression, returns model stats '''
+	logit = sm.Logit(resp, dm)
+	# fit the model
+	result = logit.fit()
+	print result.summary()
+	print 
+	print 'Odds ratios:'
+	print np.exp(result.params)
+
+
+def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
+	''' formatting wrapper for logreg_output() '''
+
+	print 'UNIT OF MEASUREMENT:', gb_type
+	print
+
+	if additional_data:
+		vlist = 'means'
+	else:
+		vlist = 'no_addtl_means'
+
+	#print 'vars:', varset[gb_type][vlist]
+	predictors = varset[gb_type][vlist] 
+	response = master[gb_type][target]
+	design_matrix = smtools.add_constant(master[gb_type][predictors]) # adds bias term, ie. vector of ones
+
+	logreg_output(design_matrix, response)
+
+
+def master_actions(master, target, control, condition, m, params, gb_type, 
+				   report, aparams, clfs, additional_data, posting_cutoff,
 				   use_pca=False):
 	''' Performs range of actions on master data frame, including plotting, modeling, and saving to disk. 
 		
@@ -1487,7 +1664,7 @@ def master_actions(master, target, control, condition, m, params, gb_type, repor
 		# merge target, control, into master
 		print 
 		print 'Merge to master: {} {}'.format(report, gb_type)
-		merge_to_master(master, target, control, m, params['vars'], gb_type)
+		merge_to_master(master, target, control, m, params['vars'], gb_type, additional_data)
 
 		print 'master {} shape:'.format(gb_type), master[gb_type].shape
 		print
@@ -1495,23 +1672,31 @@ def master_actions(master, target, control, condition, m, params, gb_type, repor
 		master['model'][gb_type] = {}
 	
 	if aparams['density']:
-		compare_density(master, m, gb_type, params['vars'])
+		compare_density(master, m, gb_type, params['vars'], additional_data)
 
 	if aparams['corr']:
-		corr_plot(master, m, gb_type, params['vars'], aparams['print_corrmat'])
+		corr_plot(master, m, gb_type, params['vars'], additional_data, aparams['print_corrmat'])
 
 	if aparams['save_to_file']:
 		# save csv of target-type // groupby-type
-		csv_name = '{cond}_{m}_{gbt}_{r}.csv'.format(cond=condition,m=m,gbt=gb_type,r=report)
+		addtl = 'addtl_data' if additional_data else 'no_addtl_data'
+		postcut = 'post_cut' if posting_cutoff else 'post_uncut'
+		fpath = '/'.join(['data-files',condition,m,gb_type])
+		fname = '_'.join([condition,m,gb_type,report,addtl,postcut])
+		csv_name = '{}/{}.csv'.format(fpath,fname)
 		master[gb_type].to_csv(csv_name, encoding='utf-8', index=False)
 
 	if aparams['ml']:
 		print 'Building ML models...'
 		print 
+		if additional_data:
+			vlist = 'means'
+		else:
+			vlist = 'no_addtl_means'
 		model_df = {'name':'Models: {} {}'.format(report, gb_type),
 					'unit':gb_type,
 					'data':master[gb_type],
-					'features':params['vars'][m][gb_type]['means'],
+					'features':params['vars'][m][gb_type][vlist],
 					'target':'target',
 					'platform':m,
 					'tall_plot':aparams['tall_plot']
@@ -1525,12 +1710,19 @@ def master_actions(master, target, control, condition, m, params, gb_type, repor
 			master['model'][gb_type][k] = output[k]
 
 	if aparams['nhst']:
-		ttest_out = ttest_wrapper(master, gb_type, params['vars'][m])
+		print
+		print 'TTEST'
+		ttest_out = ttest_wrapper(master, gb_type, params['vars'][m], additional_data)
 		master['model'][gb_type]['ttest'] = ttest_out[0]
 		master['model'][gb_type]['ttest_pvals'] = ttest_out[1]
 
+		print
+		print 'LOGISTIC REGRESSION'
+		print logreg_wrapper(master, gb_type, params['vars'][m], additional_data)
 
-def before_vs_after(df, gb_type, m, condition, varset, aparams, ncols=4):
+
+
+def before_vs_after(df, gb_type, m, condition, varset, aparams, additional_data, ncols=4):
 	for date in ['diag','susp']:
 		print
 		print 'before vs after (target: {}) for {}-groupby, based on {}_date:'.format(condition, gb_type, date)
@@ -1538,19 +1730,23 @@ def before_vs_after(df, gb_type, m, condition, varset, aparams, ncols=4):
 		splitter = 'before_{}'.format(date)
 		gb = df[gb_type].groupby(splitter)
 
+		if additional_data:
+			vlist = 'means'
+		else:
+			vlist = 'no_addtl_means'
 		if aparams['density']:
 			plt.figure()
-			numvars = float(len(varset[gb_type]['means']))
+			numvars = float(len(varset[gb_type][vlist]))
 			nrows = np.ceil(numvars/ncols).astype(int)
 			fig, axes = plt.subplots(nrows=nrows, ncols=ncols, figsize=(14, 3*nrows), tight_layout=True)
 
-			for ax, p in zip(axes.ravel(), varset[gb_type]['means']): # don't use gb_type here, it's only for url
+			for ax, p in zip(axes.ravel(), varset[gb_type][vlist]): # don't use gb_type here, it's only for url
 				for k, v in gb[p]:
 					sns.kdeplot(v, ax=ax, label=str(k)+":"+v.name)
 			plt.show()
 
 		if aparams['nhst']:
-			ttest_wrapper(df, gb_type, varset, split_var=splitter, ttype='ind')
+			ttest_wrapper(df, gb_type, varset, additional_data, split_var=splitter, ttype='ind')
 
 
 def dictify(wordVec):
@@ -1601,31 +1797,18 @@ def all_features(data, tunit, condition):
 	result['total_words'] = len(words)
 
 	# load the classes that we need
-
-	# print(len(my_LIWC.data))
-	# print(len(my_LIWC.scorelist))
 	my_word_vec = my_LIWC_stopped.wordVecify(word_dict)
-	# print(len(my_word_vec))
-	# print(sum(my_word_vec))
 	happs = my_LIWC_stopped.score(word_dict)
-	# print(len(my_LIWC.data))
-	# print(len(my_LIWC.scorelist))
-	# print(happs)
 	result['LIWC_num_words'] = sum(my_word_vec)
 	result['LIWC_happs'] = happs
 
 	my_word_vec = my_LabMT.wordVecify(word_dict)
 	happs = my_LabMT.score(word_dict)
-	# print(len(my_word_vec))
-	# print(sum(my_word_vec))
-	# print(happs)
 	result['LabMT_num_words'] = sum(my_word_vec)
 	result['LabMT_happs'] = happs
 	my_word_vec = my_ANEW.wordVecify(word_dict)
 	happs = my_ANEW.score(word_dict)
-	# print(len(my_word_vec))
-	# print(sum(my_word_vec))
-	# print(result)
+
 	result['ANEW_num_words'] = sum(my_word_vec)
 	result['ANEW_happs'] = happs
 	result['ANEW_arousal'] = my_ANEW.score(word_dict,idx=3)
@@ -1669,7 +1852,7 @@ def create_word_feats(df, tunit, condition, conn, write_to_db=False, testing=Fal
 		table_fields = pd.read_sql_query('pragma table_info(word_features)',conn).name
 		feats_to_write = [feat for feat in df['word_feats'][tunit].columns if feat in table_fields.values ]
 		word_features = "(" + ",".join(feats_to_write) + ")"
-		q = 'insert into word_features{} values ('.format(word_features) + ",".join(['?']*len(feats_to_write)) +")"
+		q = 'insert or ignore into word_features{} values ('.format(word_features) + ",".join(['?']*len(feats_to_write)) +")"
 		#testingprint 'current cols:'
 		#print df['word_feats'][tunit].columns
 		#print
@@ -1726,6 +1909,60 @@ def select_gmm(X):
 	plt.show()
 
 	return best_gmm
+
+
+def to_localtime_wrapper(conn):
+	''' Converts GMT timestamps to user's localtime, returns df with username, timestamp, localtime info '''
+
+	q = 'select id, created_at, tz from meta_tw'
+	tzinfo = pd.read_sql_query(q, conn)
+	tzinfo['local_timestamp'] = tzinfo.apply(to_localtime, axis=1)
+	tups = [tuple([x[3],x[0]]) for x in tzinfo.values]
+	return tzinfo, tups
+
+
+def to_localtime(row):
+	timestamp = row[1]
+	tz = row[2]
+	if tz is not None:
+		timestamp = mktime_tz(parsedate_tz(timestamp))
+		dt = datetime.datetime.fromtimestamp(timestamp, pytz.timezone(tz))
+		s = dt.strftime('%Y-%m-%d %H:%M:%S')
+	else:
+		s = None
+	return s
+
+
+def reformat_diag_date(metatw):
+	''' Somehow the diag_dates except for depression ended up without hyphens separating yyyymmdd '''
+	conditions = ['pregnancy','cancer','ptsd'] # depression seems fine
+
+	for cond in conditions:
+		field = 'diag_date_{}'.format(cond)
+		metatw.ix[metatw[field]!='',field] = metatw.ix[metatw[field]!='',field].apply(lambda x: x[0:4]+'-'+x[4:6]+'-'+x[6:])
+	
+def get_time_only(x):
+	if x:
+		return x.split()[1]
+	else:
+		return x
+
+def get_local_time_data(metatw):
+	metatw['local_timestamp'] = tz.local_timestamp
+	metatw['local_time'] = metatw.local_timestamp.apply(get_time_only)
+
+def tag_insomnia(x):
+	
+	insomnia_start = datetime.datetime.strptime("21:00:00","%H:%M:%S").time()
+	insomnia_end = datetime.datetime.strptime("06:00:00","%H:%M:%S").time()
+	if x:
+		t = datetime.datetime.strptime(x,"%H:%M:%S").time()
+		if (t > insomnia_start) or (t < insomnia_end):
+			return 1
+		else:
+			return 0
+	else:
+		return None
 
 
 ''' OLD REUSABLE CODE
