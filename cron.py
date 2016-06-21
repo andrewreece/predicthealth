@@ -107,8 +107,13 @@ def get_qualtrics_survey_data(start_after, start_str, condition, user_id, api_to
 					)
 	# formatted api url for readability, but we have to smush it back together before calling
 	qualtrics_url = "".join(qualtrics_url.split()) 
+	try:
 
-	data = pd.read_csv(qualtrics_url)
+		data = pd.read_csv(qualtrics_url)
+	except Exception, e:
+		print 'url:', qualtrics_url
+		print str(e)
+
 	# drop first row, which contains verbose column descriptions
 	data.drop(0,0,inplace=True)	
 
@@ -318,12 +323,12 @@ def add_survey_data(conn, control=False, test=False, beginning_of_start_after_id
 		data = get_qualtrics_survey_data(start_after, beginning_of_start_after_id_string, condition, user_id, api_token)
 		
 		# testing
-		print 'DATA: {}'.format(condition['name'])
-		print
-		print data.shape 
-		print data
-		print
-		print 
+		#print 'DATA: {}'.format(condition['name'])
+		#print
+		#print data.shape 
+		#print data
+		#print
+		#print 
 		if data.shape[0] > 0: # if there are new entries, record to SQL
 			new_data = True			
 			clean_qualtrics_data(data, condition)
@@ -409,8 +414,13 @@ def count_days_from_turning_point(conn, condition, medium_abbr):
 
 		# if days suspected is '60+', we enter a None value, otherwise compute the suspected date
 		if dsusp and str(dsusp)[-1]!='+':
-			sdate_obj = ddate_obj - datetime.timedelta(days=dsusp)
-			dates['susp'] = sdate_obj.strftime('%Y-%m-%d')
+			try:
+				sdate_obj = ddate_obj - datetime.timedelta(days=dsusp)
+				dates['susp'] = sdate_obj.strftime('%Y-%m-%d')
+			except Exception, e:
+				print 'ERRROR in count_days_from_turning_point:', str(e)
+				print 'Username: {}, Platform: {}, days_susp: {}'.format(uname, platform, dsusp)
+				dates['susp'] = None
 		else:
 			dates['susp'] = None
 	

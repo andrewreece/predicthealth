@@ -221,12 +221,13 @@ def get_photo(kind, cond):
 
 @app.route("/addrating/<cond>/<kind>/<rater_id>/<happy>/<sad>/<likable>/<interesting>/<one_word>/<description>/<encoded_url>", methods=['POST', 'GET', 'OPTIONS'])
 @crossdomain(origin='*')
-def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encoded_url,table="photo_ratings"):
+def add_rating(cond,kind,rater_id,happy,sad,likable,interesting,one_word,description,encoded_url,table="photo_ratings"):
 	''' Called from Qualtrics after a user has rated a photo
 		- Writes ratings data to photo_ratings db
 		- Increments ratings_ct in meta_ig for that URL '''
 
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
+	target_table = "_".join([table, cond, kind])
 
 	''' The reason for the regex sub on url below is because Flask parses forward slash (/) 
 		(as well as the encoded %2F) before we can even access incoming parameter strings programmatically.  
@@ -289,7 +290,8 @@ def add_rating(rater_id,happy,sad,likable,interesting,one_word,description,encod
 		return str(e)
 
 @app.route("/ratingsreport/<cond>/<kind>")
-def ratings_report():
+def ratings_report(cond, kind):
+
 	tstamp = datetime.datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
 	log_dir = 'ratings/REPORT__{t}.log'.format(t=tstamp)
 	log_msgs = []
@@ -305,6 +307,7 @@ def ratings_report():
 	for i in range(max_ratings_on_record):
 	    ct = np.sum(gb['rater_id'] > i)
 	    log_msgs.append('Photos with more than {} ratings: {}'.format(i,ct))
+
 	try:
 		util.log(log_msgs,log_dir,full_path_included=True)
 		return '<br />'.join(log_msgs)
