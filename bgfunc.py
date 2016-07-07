@@ -37,6 +37,7 @@ from sklearn.decomposition import PCA
 
 from scipy.stats import ttest_ind as ttest
 from scipy.stats import ttest_rel
+from scipy.stats import pearsonr
 import scipy.stats as stats
 
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -168,21 +169,22 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'comment_count':'first',
 						'like_count':	'first'
 					},
-					'username':{'url|count':		'mean',
+					'username':{'url':				'mean',
 								'hue':				'mean',
 								'saturation':		'mean',
 								'brightness':		'mean',
 								'comment_count': 	'mean',
 								'like_count':		'mean'
 					},
-					'created_date':{'url':				'count',
-									'hue':				'mean',
-									'saturation':		'mean',
-									'brightness':		'mean',
-									'before_diag':		'first',
-									'before_susp':		'first',
-									'comment_count': 	'mean',
-									'like_count':		'mean'
+					'created_date':{'url':			'count',
+									'username':		'first',
+									'hue':			'mean',
+									'saturation':	'mean',
+									'brightness':	'mean',
+									'before_diag':	'first',
+									'before_susp':	'first',
+									'comment_count':'mean',
+									'like_count':	'mean'
 					}
 				},
 				'tw':{
@@ -234,8 +236,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'full':	['likable','interesting','sad','happy',
 								 'likable|var','interesting|var','sad|var','happy|var',
 								 'hue','saturation','brightness','comment_count','like_count','before_diag','before_susp','target'],
-						'no_addtl_means':['hue','saturation','brightness'],
-						'no_addtl_full':['hue','saturation','brightness','before_diag','before_susp','target']
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count'],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','before_diag','before_susp','target']
 						},
 					'username':{
 						'means':['likable','interesting','sad','happy',
@@ -243,18 +245,18 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'full':	['likable','interesting','sad','happy',
 								 'likable|var','interesting|var','sad|var','happy|var',
 								 'hue','saturation','brightness','comment_count','like_count','url','one_word','description','target'],
-						'no_addtl_means':['hue','saturation','brightness'],
-						'no_addtl_full':['hue','saturation','brightness','target']
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url'],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url','target']
 						},
 					'created_date':{
 						'means':['likable','interesting','sad','happy',
-								 'hue','saturation','brightness','url|count','comment_count','like_count'],
+								 'hue','saturation','brightness','url','comment_count','like_count'],
 						'full':['likable','interesting','sad','happy',
 								'likable|var','interesting|var','sad|var','happy|var',
-								'hue','saturation','brightness','url|count','comment_count','like_count','one_word','description',
+								'hue','saturation','brightness','url','comment_count','like_count','one_word','description',
 								'before_diag','before_susp','target'],
-						'no_addtl_means':['hue','saturation','brightness'],
-						'no_addtl_full':['hue','saturation','brightness','before_diag','before_susp','target']
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url'],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url','before_diag','before_susp','target']
 						}
 				},
 				'tw':{
@@ -481,16 +483,6 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 					'created_date':['before_diag','before_susp','target']
 				}
 			},
-			'master_drop_subset':{
-				'ig':{'post':['hue','saturation','brightness'],
-					  'username':['hue','saturation','brightness'],
-					  'created_date':['hue','saturation','brightness']
-					  },
-				'tw':{'created_date':[],
-					  'user_id':[],
-					  'weekly':[]
-					  }
-			},
 			'rated':photos_rated,
 			'has_test':has_test 
 		}
@@ -557,6 +549,149 @@ def report_sample_sizes(params, conn, cond, plat_long, test_cutoff,
 		print
 
 
+def report_share_sm_disq(fname):
+	''' Reports on the # of subjects disqualified because they refused to share social media data '''
+
+	d = pd.read_csv(fname).drop(0,0) # first row of qualtrics data is extra header info
+	print 'Total attempted:', d.shape[0]
+	print 'Disqualified for share_sm:', np.sum(d.share_sm=='No')
+	print '% disq for share_sm:', np.sum(d.share_sm=='No')/float(d.shape[0])
+
+
+def urls_per_user(data):
+# avg num urls rated per user 
+
+	targ_url_ct = data['target']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
+	control_url_ct = data['control']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
+	all_url_ct = pd.concat([targ_url_ct,control_url_ct])
+	return all_url_ct
+
+def urls_rated_by_pop(data):
+	c = data['control']['ratings'].url.unique().shape[0]
+	t = data['target']['ratings'].url.unique().shape[0]
+	return (c,t)
+
+def subj_data_by_pop(data, target, platform, conn):
+	
+	output = {'control':{},'target':{}}
+	popdata = {}
+
+	popdata['control'] = pd.Series(data['control']['all'].username.unique())
+	popdata['target'] = pd.Series(data['target']['all'].username.unique())
+
+	output['control']['ct'] = popdata['control'].shape[0]
+	output['target']['ct'] = popdata['target'].shape[0]
+
+	for pop in ['control','target']:
+		tup = tuple(popdata[pop].astype(str).values)
+
+		if pop == 'control':
+			q = 'select username, year_born, gender from control where {}="No" and username in {}'.format(target,tup)
+			d = pd.read_sql_query(q,conn)
+			d.drop_duplicates(subset=['username'], inplace=True)
+
+			output['control']['femprop'] = round(np.sum(d.gender=="Female")/float(d.shape[0]),2)
+			output['control']['perc_diag_within_13_15'] = None
+
+		elif pop == 'target':
+			q = 'select username, year_born, diag_date from {} where platform="{}" and username in {}'.format(target,platform,tup)
+			d = pd.read_sql_query(q,conn)
+			d.drop_duplicates(subset=['username'], inplace=True)
+			output['target']['femprop'] = None
+
+			ts = pd.to_datetime(d.diag_date)
+			ct_within_2013_2015 = ts[(ts < pd.to_datetime('2015-12-31')) & (ts > pd.to_datetime('2013-01-01'))].shape[0]
+			perc_within_2013_2015 = ct_within_2013_2015/float(ts.shape[0])
+			output['target']['perc_diag_within_13_15'] = round(perc_within_2013_2015,2)
+			
+		age = pd.Series(2016 - d.year_born)
+		output[pop]['age'] = {'min':age.min(),'max':age.max(),'mean':round(age.mean(),2),'std':round(age.std(),2)}
+
+	return output
+
+def get_descriptives(data, target, platform, additional_data, conn, return_output=False, doPrint=True):
+	''' Reports on descriptive statistics of overall dataset used for analysis.
+		Also includes stats broken down by target/control pop.
+		Meant for printing, but also returns data from function call '''
+
+	pop_data = subj_data_by_pop(data,target,platform,conn)
+	url_ct = urls_per_user(data)
+	if additional_data:
+		urls_rated_c, urls_rated_t = urls_rated_by_pop(data)
+	
+	if doPrint:
+		print 'Mean posts per participant:', round(url_ct.mean(),2), '(SD={})'.format(round(url_ct.std(),2))
+		print 'Median posts per participant:', round(url_ct.median(),2)
+		if additional_data:
+			print 'Photos rated: TARGET population ::', urls_rated_t
+			print 'Photos rated: CONTROL population ::', urls_rated_c
+		print
+		
+		for pop in ['target','control']:
+			print 'POPULATION: {}'.format(pop.upper())
+			print 'Total participants analyzed:', pop_data[pop]['ct']
+			if pop == 'control': 
+				print 'Proportion female (control only):', pop_data[pop]['femprop']
+			if pop == 'target': 
+				print 'Proportion diagnosed between 2013-2015 (target only):', pop_data[pop]['perc_diag_within_13_15']
+			print 'Average age:', pop_data[pop]['age']['mean'], '(SD={})'.format(pop_data[pop]['age']['std'])
+			print 'Min age:', pop_data[pop]['age']['min']
+			print 'Max age:', pop_data[pop]['age']['max']
+			print
+			print
+
+	output = {'pop_data':pop_data, 'url_ct':url_ct}
+
+	if additional_data:
+		output['urls_rated'] = {'c':urls_rated_c,'t':urls_rated_t}
+		
+	if return_output:
+		return output
+
+
+def sample_2_ratings(x,col_pad):
+	tmp = x.dropna()
+	if tmp.shape[0] > 1:
+		out = np.append(tmp.sample(2).values, np.zeros(col_pad))
+		return out
+	else:
+		return None
+
+def get_ratings_corr(data, K=5):
+	''' Computes 5-fold CV Pearson's r for each of the four ratings categories '''
+	
+	ratings_rs = []
+
+	for cat in ['likable','interesting','sad','happy']:
+		ratedata = data['target']['ratings'][['url','rater_id',cat]].pivot(index='url', 
+																		columns='rater_id', 
+																		values=cat)
+		raters_samp_size = 2
+		col_shape = ratedata.shape[1]
+		col_padding = col_shape - raters_samp_size
+
+		pearson_rs = []
+		for i in range(K):
+			x = ratedata.apply(sample_2_ratings, args=(col_padding,), axis=1)
+			''' I do not understand why apply insists I return an object with the same dimensions, but in this case, it does.
+				I only want two columns to come back though, representing the two raters' values I sampled from each rate set.
+				So, you padded the two column return with zeros to match up with the original df shape.
+				Then you drop them once the apply() is finished.  Seems really dumb. '''
+			x.drop(x.columns[range(raters_samp_size,col_shape)],1,inplace=True)
+			x = x.dropna()
+			x.columns = ['r1','r2']
+			pearson_rs.append( pearsonr(x.r1,x.r2) )
+
+		pearson_cv = np.mean([x[0] for x in pearson_rs])
+		pearson_p = np.mean([x[1] for x in pearson_rs])
+		print 'Avg Pearson correlation for {} between random two raters (5-fold CV):'.format(cat.upper()), round(pearson_cv,2)
+		print 'Avg p-value:', pearson_p
+		print
+		ratings_rs.append((cat,pearson_cv,pearson_p))
+
+	return ratings_rs
+
+
 def make_data_dict(params, condition, test_name, conn, doPrint=False):
 	''' defines basic nested data structure for entire analysis 
 		note: m == medium (ie. platform) '''
@@ -588,10 +723,12 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, additi
 		find_and_drop_broken_photos(d) # this call actually drops them
 
 		d2 = get_meta(params, conn, pop)
-
+		print 'Number of users: get_meta yes addtl get_additional_data ::', d2.username.unique().shape[0]
+		print d2.username.unique()
 		# Now merge the meta_ig data with the photo_ratings_depression data
-		consolidate_data(d, d2, platform, pop_long, kind, data)
-		
+		consolidate_data(d2, d, platform, pop_long, kind, data)
+		print 'Number of users: consolidate_date yes addtl get_additional_data ::', data[pop_long][kind].username.unique().shape[0]
+
 		if doPrint:
 			# Hunting for ratings errors
 			print_coltype(data, condition, platform, pop_long)
@@ -619,13 +756,20 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, additi
 
 		# And now merge ratings data with hsv data
 		consolidate_data(data[pop_long][kind], data[pop_long]['hsv'], platform, pop_long, 'all', data)
+
+		print 'Number of users: second consolidate yes addtl data get_addtl_data ::', data[pop_long]['all'].username.unique().shape[0]
 	else:
 		d = data[pop_long]['hsv']
 		d2 = get_meta(params, conn, pop)
-
+		tmp = d2.copy()
+		print 'Number of users: get_meta no addtl get_additional_data ::', d2.username.unique().shape[0]
+		
 		# Now merge the meta_ig data with the photo_ratings_depression data
 		consolidate_data(d2, d, platform, pop_long, 'all', data)
+		print 'Number of users: consolidate_data no addtl get_additional_data ::', data[pop_long]['all'].username.unique().shape[0]
 
+		print 'usernames from meta_ig that did not pass the merge between hsv and meta_ig:'
+		print tmp.username[~tmp.username.isin(data[pop_long]['all'].username)].unique()
 
 def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 	''' Cuts all data from participants with a low number of posts.
@@ -668,7 +812,7 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 			
 		if posting_cutoff and (platform == 'ig'):
 			cut_low_posters(data, pop_long)
-			
+
 		# aggregate data by groupby types (url, username, created_date)
 		make_groupby(data[pop_long], platform, pop_long, params, gb_types, 
 					 conn, condition, additional_data,
@@ -864,7 +1008,7 @@ def get_hsv(data, m, params, conn, pop, pop_long, doPrint=True, cols=['url','hue
 
 	hsv = pd.read_sql_query(params['q']['all_hsv'],conn)
 	hsv.dropna(inplace=True)
-	
+
 	if doPrint:
 		print 'Number photos with HSV ratings (all conditions):', hsv.shape[0]
 
@@ -892,10 +1036,14 @@ def mark_before_after(d, pop_long):
 			d['before_{}'.format(date)] = np.nan 
 
 
-def consolidate_data(d, d2, m, pop_long, kind, data):
+def consolidate_data(a, b, m, pop_long, kind, data):
 	''' merges dfs, adds 0/1 class indicator variable '''
 
-	data[pop_long][kind] = d.merge(d2, how='inner',on='url')
+	test_url = 'https://scontent.cdninstagram.com/t51.2885-15/s320x320/e35/11906135_704153606357255_14161834_n.jpg'
+	print 'Number of users: consolidate_data before merge ::', a.username.unique().shape[0]
+	data[pop_long][kind] = a.merge(b, how='inner',on='url')
+	print
+	print 'Number of users: consolidate_data after merge ::', data[pop_long][kind].username.unique().shape[0]
 
 	if pop_long == 'target':
 		cl = 1
@@ -1111,14 +1259,14 @@ def make_groupby(df, m, pop, params, gb_types,
 													  'one_word|join':'one_word',
 													  'description|join':'description'}, inplace=True)
 				for field in df['gb'][gb_type].columns:
-					if re.search('mean|first|join',field):
+					if re.search('mean|first|join|count',field):
 						df['gb'][gb_type].rename(columns={field:field.split("|")[0]}, inplace=True)
 
 				# removes duplicate columns caused by reset_index()
 				# http://stackoverflow.com/a/36513262/2799941
 				Cols = list(df['gb'][gb_type].columns)
 				for i,item in enumerate(df['gb'][gb_type].columns):
-				    if item in df['gb'][gb_type].columns[:i]: Cols[i] = "toDROP"
+					if item in df['gb'][gb_type].columns[:i]: Cols[i] = "toDROP"
 				df['gb'][gb_type].columns = Cols
 				if "toDROP" in Cols:
 					df['gb'][gb_type] = df['gb'][gb_type].drop("toDROP",1)
@@ -1163,6 +1311,21 @@ def make_groupby(df, m, pop, params, gb_types,
 
 	if doPrint:
 		print 
+
+
+def summary_stats(data, gb_type, additional_data):
+	''' Prints summary statistics for each variable in model '''
+	if additional_data:
+		varset = ['happy','sad','interesting','likable','hue','saturation','brightness','comment_count','like_count','url']
+	else:
+		varset = ['hue','saturation','brightness','comment_count','like_count','url']
+	for v in varset:
+		print 'Variable:', v.upper()
+		for p in ['target','control']:
+			mean = round(data[p]['gb'][gb_type][v].mean(),3)
+			std = round(data[p]['gb'][gb_type][v].std(),3)
+			print p.upper(), 'mean:', mean, '(SD={})'.format(std)
+		print
 
 
 def merge_to_master(master, target, control, m, varset, gb_type, additional_data, doPrint=False):

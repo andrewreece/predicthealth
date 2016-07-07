@@ -5,9 +5,9 @@ get.data.fpath <- function(condition,medium,gb.type,kind,addtl,post.cut) {
   return(fpath)
 }
 
-get.jags.path <- function(ftype,which.f,medium,kind,gb.type,addtl,stdized,m) {
-  folder.path <- paste(paste0(ftype,"-mcmc-output"),kind,gb.type,sep="/")
-  fname <- paste(which.f,medium,kind,gb.type,addtl,stdized,m,".Rdata",sep="_")
+get.jags.path <- function(ftype,which.f,condition,medium,kind,gb.type,addtl,stdized,m,post.cut) {
+  folder.path <- paste(paste0(ftype,"-mcmc-output"),condition,kind,gb.type,sep="/")
+  fname <- paste(which.f,condition,medium,kind,gb.type,addtl,stdized,m,post.cut,".Rdata",sep="_")
   full.path <- paste(folder.path,fname,sep="/")
   return(full.path)
 }
@@ -86,20 +86,43 @@ write.jags.model <- function(mdf, preds, var.list, intercept.only=FALSE, include
 }
 
 
-report.hpdi <- function(params, var.names) {
-  print('Highest Probability Density Intervals')
+hpd.hunt <- function(params, field, old.prob) {
+  prob <- ifelse(old.prob==0.99, 0.95, old.prob-0.05)
+  hpd.obj <- HPDinterval(params, prob=prob)[[1]]
+
+  if (hpd.obj[field,'lower'] * hpd.obj[field,'upper'] > 0) {
+    print(paste0(prob,'% HPDI:'))
+    print(hpd.obj[field,])
+    print(paste(str_to_upper(field),':: GOOD AT prob:',prob,'% :: Does not contain zero'))
+    print('____')
+  } else {
+    # if HPDI contains zero, we plot the histogram to see how close it is
+    #print(paste(str_to_upper(field),':: NOT GOOD AT prob:',prob,'% :: Contains zero, see plot'))
+    hpd.hunt(params, field, prob)
+  }  
+}
+
+
+report.hpdi <- function(params, var.names, prob=0.99) {
+  print('Highest Posterior Density Intervals:')
+  not.goods <- c() # for keeping track of which HPDIs include 0
+  
   for (field in var.names) {
     print(field)
-    print(HPDinterval(params)[[1]][field,])
-    if (HPDinterval(params)[[1]][field,'lower'] * HPDinterval(params)[[1]][field,'upper'] > 0) {
-      print(paste(str_to_upper(field),':: GOOD: Does not contain zero'))
+    hpd.obj <- HPDinterval(params, prob=prob)[[1]]
+    print('99% HPDI:')
+    print(hpd.obj[field,])
+    if (hpd.obj[field,'lower'] * hpd.obj[field,'upper'] > 0) {
+      print(paste(str_to_upper(field),':: GOOD AT prob:',prob,'% :: Does not contain zero'))
+      print('____')
     } else {
       # if HPDI contains zero, we plot the histogram to see how close it is
-      print(paste(str_to_upper(field),':: NOT GOOD: Contains zero, see plot'))
+      print(paste(str_to_upper(field),':: NOT GOOD AT prob:',prob,'% :: Contains zero, see plot'))
       field.post <- params[[1]][,field]           ## extract happy posterior
       hist(field.post, main = paste("Histogram",field, "Posterior (jags)"), xlab = paste(field,"parameter samples (jags)"))
-      abline(v = HPDinterval(params)[[1]][field,], col = "gray", lty = 2, lwd = 2)  ## HPD
+      abline(v = hpd.obj[field,], col = "gray", lty = 2, lwd = 2)  ## HPD
       abline(v = mean(field.post), col = "red", lwd = 2)         ## posterior mean
+      hpd.hunt(params, field, 0.99)
     }      
   }
 }
@@ -167,8 +190,8 @@ get.bayes.p <- function(var.list, params,
 
 compare.dic <- function(model.dic, analyze.addtl.data) {
   x <- 'intercept_only'
-  y <- 'means'
-  z <- 'no_addtl_means'
+  y <- 'all_means'
+  z <- 'hsv_means'
   if (!analyze.addtl.data) {
     models <- c(x,y)
     ddic <- diffdic(model.dic[[x]], model.dic[[y]])
@@ -202,22 +225,42 @@ mcmc.pack.model <- function(data, burnin, n, thin, b0, B0, m) {
     # first chain
     mcmc.1 <- MCMClogit(target ~ 1, data = data,
                         burnin = burnin, mcmc = n, 
-                        thin = thin, b0 = b0, B0 = B0, seed = 1234)
+                        thin = thin, b0 = b0, B0 = B0, seed = 1234, marginal.likelihood = "Laplace")
     # second chain
     mcmc.2 <- MCMClogit(target ~ 1, data = data,
                         burnin = burnin, mcmc = n, 
-                        thin = thin, b0 = b0, B0 = B0, seed = 5678)
+                        thin = thin, b0 = b0, B0 = B0, seed = 5678, marginal.likelihood = "Laplace")
   } else {
     # first chain
     mcmc.1 <- MCMClogit(target ~ ., data = data,
                         burnin = burnin, mcmc = n, 
-                        thin = thin, b0 = b0, B0 = B0, seed = 1234)
+                        thin = thin, b0 = b0, B0 = B0, seed = 1234, marginal.likelihood = "Laplace")
     # second chain
     mcmc.2 <- MCMClogit(target ~ ., data = data,
                         burnin = burnin, mcmc = n, 
-                        thin = thin, b0 = b0, B0 = B0, seed = 5678)
+                        thin = thin, b0 = b0, B0 = B0, seed = 5678, marginal.likelihood = "Laplace")
   }
   
   mcmc <- mcmc.list(mcmc.1, mcmc.2)  ## merging both models into a mcmc object
   return(mcmc)
+}
+
+compare.bayes.factor <- function(fits, addtl) {
+  # computes bayes factors for each model and compares them 
+  
+  if (addtl) {
+    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]], 
+                           fits[['ratings_means']][[1]], fits[['all_means']][[1]])
+    col.names <- c('intercept_only','metadata','ratings','all')
+  } else {
+    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]])
+    col.names <- c('intercept_only','hsv')
+  }
+  bf.mat <- bfactor$BF.log.mat
+  colnames(bf.mat) <- col.names
+  rownames(bf.mat) <- col.names
+  print('Bayes Factor model matrix:')
+  print(round(bf.mat, 1))
+  
+  return(bfactor)
 }
