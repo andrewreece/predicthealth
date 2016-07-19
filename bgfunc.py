@@ -29,7 +29,7 @@ from sklearn.ensemble import RandomForestClassifier as RFC
 from sklearn.svm import SVC
 
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_curve, auc, f1_score, precision_score, recall_score
 
 from sklearn import cross_validation
 from sklearn import mixture
@@ -64,7 +64,7 @@ def analysis_specifications(pl, condition):
 			'tw':'twitter'
 		},
 		'fields':{
-			'ig':'url, comment_count, like_count',
+			'ig':'url, comment_count, like_count, filter, has_face, face_ct',
 			'tw':'id, text, has_url'
 		}
 	}
@@ -167,14 +167,20 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'before_diag':	'first',
 						'before_susp':	'first',
 						'comment_count':'first',
-						'like_count':	'first'
+						'like_count':	'first',
+						'has_filter':	'first',
+						'has_face':		'first',
+						'face_ct':		'first'
 					},
 					'username':{'url':				'mean',
 								'hue':				'mean',
 								'saturation':		'mean',
 								'brightness':		'mean',
 								'comment_count': 	'mean',
-								'like_count':		'mean'
+								'like_count':		'mean',
+								'has_filter':		'mean',
+								'has_face':			'mean',
+								'face_ct':			'mean'
 					},
 					'created_date':{'url':			'count',
 									'username':		'first',
@@ -184,7 +190,10 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 									'before_diag':	'first',
 									'before_susp':	'first',
 									'comment_count':'mean',
-									'like_count':	'mean'
+									'like_count':	'mean',
+									'has_filter':	'sum',
+									'has_face':		'sum',
+									'face_ct':		'mean'
 					}
 				},
 				'tw':{
@@ -231,32 +240,35 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'vars':{
 				'ig': {
 					'post':{ 
-						'means':['likable','interesting','sad','happy',
+						'means':['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								 'hue','saturation','brightness','comment_count','like_count'],
-						'full':	['likable','interesting','sad','happy',
+						'full':	['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								 'likable|var','interesting|var','sad|var','happy|var',
 								 'hue','saturation','brightness','comment_count','like_count','before_diag','before_susp','target'],
-						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count'],
-						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','before_diag','before_susp','target']
+						'only_ratings': ['happy','sad','likable','interesting'],
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count', 'has_filter', 'has_face', 'face_ct',],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count', 'has_filter', 'has_face', 'face_ct', 'before_diag','before_susp','target']
 						},
 					'username':{
-						'means':['likable','interesting','sad','happy',
+						'means':['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								 'hue','saturation','brightness','comment_count','like_count','url'],
-						'full':	['likable','interesting','sad','happy',
+						'full':	['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								 'likable|var','interesting|var','sad|var','happy|var',
 								 'hue','saturation','brightness','comment_count','like_count','url','one_word','description','target'],
-						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url'],
-						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url','target']
+						'only_ratings': ['happy','sad','likable','interesting'],
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url', 'has_filter', 'has_face', 'face_ct',],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url', 'has_filter', 'has_face', 'face_ct','target']
 						},
 					'created_date':{
-						'means':['likable','interesting','sad','happy',
+						'means':['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								 'hue','saturation','brightness','url','comment_count','like_count'],
-						'full':['likable','interesting','sad','happy',
+						'full':['likable','interesting','sad','happy', 'has_filter', 'has_face', 'face_ct',
 								'likable|var','interesting|var','sad|var','happy|var',
 								'hue','saturation','brightness','url','comment_count','like_count','one_word','description',
 								'before_diag','before_susp','target'],
-						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url'],
-						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url','before_diag','before_susp','target']
+						'only_ratings': ['happy','sad','likable','interesting'],
+						'no_addtl_means':['hue','saturation','brightness','comment_count','like_count','url', 'has_filter', 'has_face', 'face_ct',],
+						'no_addtl_full':['hue','saturation','brightness','comment_count','like_count','url', 'has_filter', 'has_face', 'face_ct','before_diag','before_susp','target']
 						}
 				},
 				'tw':{
@@ -564,7 +576,7 @@ def urls_per_user(data):
 	targ_url_ct = data['target']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
 	control_url_ct = data['control']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
 	all_url_ct = pd.concat([targ_url_ct,control_url_ct])
-	return all_url_ct
+	return targ_url_ct, control_url_ct, all_url_ct
 
 def urls_rated_by_pop(data):
 	c = data['control']['ratings'].url.unique().shape[0]
@@ -615,7 +627,9 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 		Meant for printing, but also returns data from function call '''
 
 	pop_data = subj_data_by_pop(data,target,platform,conn)
-	url_ct = urls_per_user(data)
+	ct = {}
+	ct['target'], ct['control'], url_ct = urls_per_user(data)
+
 	if additional_data:
 		urls_rated_c, urls_rated_t = urls_rated_by_pop(data)
 	
@@ -630,6 +644,8 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 		for pop in ['target','control']:
 			print 'POPULATION: {}'.format(pop.upper())
 			print 'Total participants analyzed:', pop_data[pop]['ct']
+			print 'Mean posts per participant:', round(ct[pop].mean(),2), '(SD={})'.format(round(ct[pop].std(),2))
+			print 'Median posts per participant:', round(ct[pop].median(),2)
 			if pop == 'control': 
 				print 'Proportion female (control only):', pop_data[pop]['femprop']
 			if pop == 'target': 
@@ -645,8 +661,33 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 	if additional_data:
 		output['urls_rated'] = {'c':urls_rated_c,'t':urls_rated_t}
 		
+	output['url_ct'].plot(kind='hist', 
+						  bins=50, 
+						  title='Instagram posts per participant, {} (target + control)'.format(target))
+	plt.show()
+
 	if return_output:
 		return output
+
+
+def out_of_100(prev, prec, spec, rec, N=100):
+	''' Reports model accuracy based on a hypothetical sample of 100 data points.
+		Eg. "out of 100 samples, there were X positive IDs, Y false alarms, and Z false negatives..." '''
+		
+    print 'Out of {} random observations...'.format(N)
+    print
+    n_1 = round(N*prev)
+    n_0 = N - n_1
+    pos_id = round(n_1 * prec)
+    neg_id = round(n_0 * spec)
+    f_alarm = n_1 - pos_id
+    f_neg = n_1 - pos_id
+    print pos_id, "positive IDs"
+    print f_alarm, "false alarms"
+    print f_neg, "false negatives"
+    print neg_id, "negative IDs"
+    print
+    print 'reconstituted total:', np.sum([pos_id, f_alarm, f_neg, neg_id])
 
 
 def sample_2_ratings(x,col_pad):
@@ -709,7 +750,8 @@ def make_data_dict(params, condition, test_name, conn, doPrint=False):
 	return data 
 
 
-def get_additional_data(data, params, platform, condition, pop, pop_long, additional_data, conn, doPrint=False):
+def get_additional_data(data, params, platform, condition, pop, pop_long, 
+						additional_data, include_filter, conn, doPrint=False):
 	''' For Instagram: Checks if this condition has photo ratings, if so, adds to basic (hsv) data. '''
 
 	# this if- block deals with conditions where photos have been rated
@@ -723,11 +765,16 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, additi
 		find_and_drop_broken_photos(d) # this call actually drops them
 
 		d2 = get_meta(params, conn, pop)
-		print 'Number of users: get_meta yes addtl get_additional_data ::', d2.username.unique().shape[0]
-		print d2.username.unique()
+		
+		if doPrint:
+			print 'Number of users: get_meta yes addtl get_additional_data ::', d2.username.unique().shape[0]
+			print d2.username.unique()
+		
 		# Now merge the meta_ig data with the photo_ratings_depression data
 		consolidate_data(d2, d, platform, pop_long, kind, data)
-		print 'Number of users: consolidate_date yes addtl get_additional_data ::', data[pop_long][kind].username.unique().shape[0]
+		
+		if doPrint:
+			print 'Number of users: consolidate_date yes addtl get_additional_data ::', data[pop_long][kind].username.unique().shape[0]
 
 		if doPrint:
 			# Hunting for ratings errors
@@ -757,19 +804,31 @@ def get_additional_data(data, params, platform, condition, pop, pop_long, additi
 		# And now merge ratings data with hsv data
 		consolidate_data(data[pop_long][kind], data[pop_long]['hsv'], platform, pop_long, 'all', data)
 
-		print 'Number of users: second consolidate yes addtl data get_addtl_data ::', data[pop_long]['all'].username.unique().shape[0]
+		if doPrint:
+			print 'Number of users: second consolidate yes addtl data get_addtl_data ::', data[pop_long]['all'].username.unique().shape[0]
 	else:
 		d = data[pop_long]['hsv']
 		d2 = get_meta(params, conn, pop)
 		tmp = d2.copy()
-		print 'Number of users: get_meta no addtl get_additional_data ::', d2.username.unique().shape[0]
+		
+		if doPrint:
+			print 'Number of users: get_meta no addtl get_additional_data ::', d2.username.unique().shape[0]
 		
 		# Now merge the meta_ig data with the photo_ratings_depression data
 		consolidate_data(d2, d, platform, pop_long, 'all', data)
-		print 'Number of users: consolidate_data no addtl get_additional_data ::', data[pop_long]['all'].username.unique().shape[0]
+		
+		if doPrint:
+			print 'Number of users: consolidate_data no addtl get_additional_data ::', data[pop_long]['all'].username.unique().shape[0]
+			print 'usernames from meta_ig that did not pass the merge between hsv and meta_ig:'
+			print tmp.username[~tmp.username.isin(data[pop_long]['all'].username)].unique()
 
-		print 'usernames from meta_ig that did not pass the merge between hsv and meta_ig:'
-		print tmp.username[~tmp.username.isin(data[pop_long]['all'].username)].unique()
+	if include_filter:
+		data[pop_long]['all']['has_filter'] = 1
+		data[pop_long]['all'].ix[ data[pop_long]['all']['filter'] == 'Normal','has_filter'] = 0
+
+		if doPrint:
+			print 'Prop {} with filter:'.format( pop_long ), data[pop_long]['all']['has_filter'].mean()
+
 
 def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 	''' Cuts all data from participants with a low number of posts.
@@ -793,7 +852,8 @@ def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 
 
 def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points,
-					 posting_cutoff=False, additional_data=False, limit_date_range=False):
+					 posting_cutoff=False, additional_data=False, 
+					 include_filter=True, limit_date_range=False):
 	''' Pulls data from db, cleans, and aggregates. Also creates subsets based on diag/susp date '''
 
 	# collect target and control data
@@ -808,7 +868,8 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 			we add them in during the make_groupby() process, instead of here.  Photo ratings, on the other hand,
 			are not stored as aggregated data. '''
 		if (platform == 'ig'):
-			get_additional_data(data, params, platform, condition, pop, pop_long, additional_data, conn)
+			get_additional_data(data, params, platform, condition, pop, pop_long, 
+								additional_data, include_filter, conn)
 			
 		if posting_cutoff and (platform == 'ig'):
 			cut_low_posters(data, pop_long)
@@ -880,7 +941,7 @@ def get_basic_data(data, m, params, conn, pop, pop_long, limit_date_range=False,
 		this is basically just a wrapper for get_hsv() and get_tweet_metadata() '''
 
 	if m == 'ig':
-		get_hsv(data, m, params, conn, pop, pop_long)
+		get_hsv(data, m, params, conn, pop, pop_long, limit_date_range)
 	elif m == 'tw':
 		get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range, doPrint=doPrint)
 
@@ -1003,7 +1064,9 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=Fa
 	data[pop_long]['tweets'] = tweets 
 
 
-def get_hsv(data, m, params, conn, pop, pop_long, doPrint=True, cols=['url','hue','saturation','brightness']):
+def get_hsv(data, m, params, conn, pop, pop_long, limit_date_range=False, 
+			t_maxback=-(365 + 60), t_maxfor=365, c_maxback=365*2, 
+			doPrint=False, cols=['url','hue','saturation','brightness']):
 	''' Gets HSV values for Instagram photos '''
 
 	hsv = pd.read_sql_query(params['q']['all_hsv'],conn)
@@ -1014,8 +1077,29 @@ def get_hsv(data, m, params, conn, pop, pop_long, doPrint=True, cols=['url','hue
 
 	unames = get_pop_unames(params, m, conn, pop)
 	metaig = get_meta(params, conn, pop)
-	urls = metaig.ix[metaig.username.isin(unames.username),'url'].values
 
+
+	''' To restrict the date range of tweets analyzed, we can set the t_maxback, t_maxfor, and c_maxback 
+		variables, and set limit_date_range=True. Otherwise, we use all tweets. '''
+	if limit_date_range:
+		if pop_long == 'target':
+			max_backward = t_maxback # one year back plus 60 days to make sure we're including a full year back from suspected 
+			max_forward = t_maxfor
+			mask = (metaig.from_diag >= max_backward) & (metaig.from_diag <= max_forward)
+		
+		elif pop_long == 'control':
+			day_span = c_maxback # to approximate going one year back and forwards from diag_date in target pop
+			dfp = [(datetime.datetime.now() - d).days for d in pd.to_datetime(metaig.created_date)]
+			metaig['days_from_present'] = dfp
+			mask = (metaig.groupby('username')['days_from_present']
+							  .apply(lambda x: x.nsmallest(day_span))
+							  .reset_index()['level_1'] # level_1 gets row indices from all_tweets to use as mask
+					)
+		metaig = metaig.ix[ mask, : ].copy()
+	else:
+		metaig = metaig.copy()
+
+	urls = metaig.ix[metaig.username.isin(unames.username),'url'].values
 	if doPrint:
 		print 'Num HSV-rated photos with URL in {}, before dropping duplicates:'.format(pop_long.upper()), hsv.ix[hsv.url.isin(urls),:].shape[0]
 
@@ -1039,12 +1123,8 @@ def mark_before_after(d, pop_long):
 def consolidate_data(a, b, m, pop_long, kind, data):
 	''' merges dfs, adds 0/1 class indicator variable '''
 
-	test_url = 'https://scontent.cdninstagram.com/t51.2885-15/s320x320/e35/11906135_704153606357255_14161834_n.jpg'
-	print 'Number of users: consolidate_data before merge ::', a.username.unique().shape[0]
 	data[pop_long][kind] = a.merge(b, how='inner',on='url')
-	print
-	print 'Number of users: consolidate_data after merge ::', data[pop_long][kind].username.unique().shape[0]
-
+	
 	if pop_long == 'target':
 		cl = 1
 	elif pop_long == 'control':
@@ -1054,7 +1134,7 @@ def consolidate_data(a, b, m, pop_long, kind, data):
 	mark_before_after(data[pop_long][kind], pop_long)
 
 	print 'Shape of consolidated {} {} data:'.format(pop_long.upper(), kind.upper()), data[pop_long][kind].shape 
-
+	print 'Note: Number of actual data points will be lower for ratings...see get_descriptives()'
 
 
 ''' Note for following two functions regarding column datatypes:
@@ -1259,7 +1339,7 @@ def make_groupby(df, m, pop, params, gb_types,
 													  'one_word|join':'one_word',
 													  'description|join':'description'}, inplace=True)
 				for field in df['gb'][gb_type].columns:
-					if re.search('mean|first|join|count',field):
+					if re.search('mean|first|join|count|sum',field):
 						df['gb'][gb_type].rename(columns={field:field.split("|")[0]}, inplace=True)
 
 				# removes duplicate columns caused by reset_index()
@@ -1313,17 +1393,31 @@ def make_groupby(df, m, pop, params, gb_types,
 		print 
 
 
-def summary_stats(data, gb_type, additional_data):
+def summary_stats(data, gb_type, level, additional_data):
 	''' Prints summary statistics for each variable in model '''
+
+	# level values: main, before_diag, before_susp
+
 	if additional_data:
-		varset = ['happy','sad','interesting','likable','hue','saturation','brightness','comment_count','like_count','url']
+		varset = ['happy','sad','interesting','likable','hue','saturation','brightness','comment_count','like_count','url','has_filter','has_face','face_ct']
 	else:
-		varset = ['hue','saturation','brightness','comment_count','like_count','url']
+		varset = ['hue','saturation','brightness','comment_count','like_count','url','has_filter','has_face','face_ct']
 	for v in varset:
 		print 'Variable:', v.upper()
-		for p in ['target','control']:
-			mean = round(data[p]['gb'][gb_type][v].mean(),3)
-			std = round(data[p]['gb'][gb_type][v].std(),3)
+
+		for p, pval in [('target',1),('control',0)]:
+
+			if level == 'main':
+				df = data['master'][gb_type]
+				df = df.ix[df.target==pval,:]
+			else:
+				when = level.split("_")[0]
+				turn = 'from_{}'.format(level.split("_")[1])
+				df = data['master'][when][turn][gb_type]
+				df = df.ix[df.target==pval,:]
+
+			mean = round(df[v].mean(),3)
+			std = round(df[v].std(),3)
 			print p.upper(), 'mean:', mean, '(SD={})'.format(std)
 		print
 
@@ -1465,12 +1559,30 @@ def print_confusion_matrix(X_pred, y_test, ctype, labels=None):
 	print
 
 
-def print_model_summary(fit,ctype,target,title,X_test,y_test,labels):
+def print_model_summary(fit, ctype, target, title, X_test, y_test, labels, average='binary', pos_label=1):
 	''' formats model output in a notebook-friendly print layout '''
 
-	print 'MODEL: {} {} ({}):'.format(fit['name'],target,title)
-	print 'NAIVE ACCURACY:'.format(ctype), round(fit['clf'].score(X_test,y_test),3)
+	print 'MODEL: {} ({}):'.format(fit['name'],title)
+	print 'NAIVE ACCURACY:', round(fit['clf'].score(X_test,y_test),3)
 
+	actual_neg = y_test==0
+	preds = fit['clf'].predict(X_test)
+	pred_neg = preds==0
+
+	tn = np.sum(actual_neg & pred_neg)
+	pneg = np.sum(pred_neg)
+	neg = np.sum(actual_neg)
+	print 'tn:', tn 
+	print 'pneg:', pneg
+	print 'neg:', neg 
+	print 'NPV:', round( tn / float(pneg), 3)
+	print 'SPECIFICITY:', round( tn / float(neg), 3 )
+	print 'PRECISION (PPV):', round(precision_score(y_test, fit['clf'].predict(X_test), average=average), 3)
+	print 'RECALL (SENSITIVITY):', round(recall_score(y_test, fit['clf'].predict(X_test), average=average), 3)
+	print 'F1:', round(f1_score(y_test, fit['clf'].predict(X_test), average=average), 3)
+	print 
+	print 'Note: Weighted scores compute for each label, then weight-average together.'
+	print 'See: http://scikit-learn.org/stable/modules/generated/sklearn.metrics.precision_score.html'
 	print_confusion_matrix(fit['clf'].predict(X_test), y_test, ctype, labels)
 
 
@@ -1597,11 +1709,16 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 						'known_1':'known_target',
 						'pred_0':'pred_control',
 						'pred_1':'pred_target'}):
+
+	''' NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec. clf.) '''
+
 	mdata = d['data']
 	title = d['name']
 	unit = d['unit']
 	target = d['target'] 
 	feats = d['features']
+	acc_avg = d['acc_avg']
+
 	if 'tall_plot' in d.keys():
 		tall_plot = d['tall_plot']
 	
@@ -1649,7 +1766,7 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	fits = {}
 
 	fits['lr'] = {'name':'Logistic Regression','clf':logregcv(class_weight='auto')}
-	fits['rf'] = {'name':'Random Forests','clf':RFC(n_estimators=n_est)}
+	fits['rf'] = {'name':'Random Forests','clf':RFC(n_estimators=n_est, class_weight='balanced')}
 	fits['svc'] = {'name':'Support Vector Machine','clf':SVC(class_weight='auto', kernel=kernel, probability=True)}
 	
 	for ctype in clf_types:
@@ -1662,9 +1779,21 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 
 	print 'UNIT OF OBSERVATION:', unit.upper()
 	total_obs = X_test.shape[0]
-	total_incomp = np.sum(y_test==0)
-	print 'NAIVE ACCURACY ALL NULL:', round((total_incomp)/float(total_obs),3)
-	print "  *'ALL NULL' means if all observations are predicted as uncompleted assessments"
+	total_neg = np.sum(y_test==0)
+
+	prop_neg = round((total_neg)/float(total_obs),3)
+
+	if prop_neg > 0.5:
+		majority_class = 'control'
+		pos_label = 0
+		naive_acc = prop_neg
+	else:
+		majority_class = 'target'
+		pos_label = 1
+		naive_acc = 1 - prop_neg
+
+	print 'NAIVE ACCURACY ALL MAJORITY:', naive_acc
+	print "  *'ALL MAJORITY' = all observations are predicted as majority class (here: {})".format(majority_class)
 	print 
 	print
 	
@@ -1676,7 +1805,7 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	for ctype in clf_types:
 		
 		print_model_summary(fits[ctype], ctype,
-							target, title, X_test, y_test, labels)
+							target, title, X_test, y_test, labels, average=acc_avg, pos_label=pos_label)
 
 		roc_wrapper(fits, ctype, y_test, X_test, d['platform'])
 		
@@ -1694,15 +1823,20 @@ def ttest_output(a, b, varset, ttype, correction=True, alpha=0.05, method='bonfe
 	pvals = []
 
 	for metric in varset:
-		if metric[0:5] != 'LIWC': # this controls for 0s on happs scores and other vars that shouldn't have 0
-			a = a.ix[a[metric] != 0, :]
-			b = b.ix[b[metric] != 0, :]
-		print 'RATING: {}'.format(metric)
+		#if metric[0:5] != 'LIWC': # this controls for 0s on happs scores and other vars that shouldn't have 0
+		#	a = a.ix[a[metric] != 0, :]
+		#	b = b.ix[b[metric] != 0, :]
+		print
+		print 'VARIABLE: {}'.format(metric)
 		if ttype == 'ind':
 			test = ttest(a[metric], b[metric])
 		elif ttype == 'dep':
 			test = ttest_rel(a[metric], b[metric])
-		print test
+		print 'A mean: {} (sd={})'.format(a[metric].mean(), a[metric].std())
+		print 'B mean: {} (sd={})'.format(b[metric].mean(), b[metric].std())
+		print
+		print 't = {}, p = {}'.format(test.statistic,test.pvalue)
+		print
 		pvals.append( test.pvalue )
 		print
 		
@@ -1731,14 +1865,26 @@ def ttest_wrapper(master, gb_type, varset, additional_data, split_var='target', 
 	return ttest_output(a, b, varset[gb_type][vlist], ttype)
 
 
-def compare_filters(data, conn, show_figs=True):
+def compare_filters(data, conn, level, gb_type, show_figs=True):
 	''' Chi2, plotting comparisons of Instagram filter use between target and control pops '''
 
-	metaig = pd.read_sql_query('select * from meta_ig', conn)
-	cids = data['control']['all'].user_id
-	tids = metaig.ix[metaig.d_from_diag_depression.notnull(),'instagram_user_id']
-	tfilt = metaig.ix[metaig.instagram_user_id.isin(tids),['username','filter']]
-	cfilt = metaig.ix[metaig.instagram_user_id.isin(cids),['username','filter']]
+	metaig = pd.read_sql_query('select username, filter, d_from_diag_depression as ddiag from meta_ig', conn)
+
+	if level == 'main':
+
+		cids = data['control']['all'].username
+		tids = data['target']['all'].username 
+
+	else:
+
+		when = level.split("_")[0]
+		turn = 'from_{}'.format(level.split("_")[1])
+		subdf = data['master'][when][turn][gb_type].reset_index()
+		cids = subdf.username[subdf.target==0]
+		tids = subdf.username[subdf.target==1]
+
+	tfilt = metaig.ix[metaig.username.isin(tids),['username','filter']]
+	cfilt = metaig.ix[metaig.username.isin(cids),['username','filter']]
 	tfilt['target'] = 1
 	cfilt['target'] = 0
 	filts = pd.concat([tfilt,cfilt], axis=0)
@@ -1758,6 +1904,29 @@ def compare_filters(data, conn, show_figs=True):
 	filtct_chi2 = filtct.ix[(filtct.control>=5) & (filtct.target>=5)] # we need >= 5 obs per cell for chi2
 
 	print 'filters that missed the cut:',filtct.index[~filtct.index.isin(filtct_chi2.index)].astype(str).values
+
+
+
+	no_filt = filts['filter']=="Normal"
+	tm = filts.target==1
+	filts['has_filter'] = True
+
+	filts.ix[no_filt, 'has_filter'] = False
+
+	print "Prevalence of filter usage in pops:"
+	print
+
+	print 'Target:'
+	print "mean:", filts.ix[tm, 'has_filter'].mean()
+	print "std:", filts.ix[tm, 'has_filter'].std()
+
+	print
+
+	print 'Control:'
+	print "mean:", filts.ix[~tm, 'has_filter'].mean()
+	print "std:", filts.ix[~tm, 'has_filter'].std()
+
+	print
 
 	#above1pct = filtprop.ix[(filtprop.target > 0.01)&(filtprop.control > 0.01),:].index
 	#filtct_chi2 = filtct.ix[filtct.index.isin(above1pct),:]
@@ -1782,6 +1951,8 @@ def compare_filters(data, conn, show_figs=True):
 		plt.figure()
 		filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values('target',ascending=True).plot(kind='bar', figsize=(16,8), fontsize=14)
 		plt.title('Instagram filter frequency count Chi2 offset (observed-expected), Normal excluded', fontsize=18)
+
+	return filts 
 
 
 def logreg_output(dm, resp):
@@ -1862,7 +2033,8 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 					'features':params['vars'][m][gb_type][vlist],
 					'target':'target',
 					'platform':m,
-					'tall_plot':aparams['tall_plot']
+					'tall_plot':aparams['tall_plot'],
+					'acc_avg':aparams['acc_avg']
 				   }
 
 		output, pca = make_models(model_df, clf_types=clfs, 

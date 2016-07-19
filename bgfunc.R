@@ -245,16 +245,23 @@ mcmc.pack.model <- function(data, burnin, n, thin, b0, B0, m) {
   return(mcmc)
 }
 
-compare.bayes.factor <- function(fits, addtl) {
+compare.bayes.factor <- function(fits, addtl, hsv.separate) {
   # computes bayes factors for each model and compares them 
   
   if (addtl) {
-    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]], 
-                           fits[['ratings_means']][[1]], fits[['all_means']][[1]])
-    col.names <- c('intercept_only','metadata','ratings','all')
+    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['ig_face_means']][[1]], 
+                           fits[['ratings_means']][[1]])
+    col.names <- c('intercept_only','metadata','ratings')
   } else {
-    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]])
-    col.names <- c('intercept_only','hsv')
+    if (hsv.separate) {
+      
+      bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]], 
+                             fits[['all_ig_means']][[1]], fits[['ig_face_means']][[1]])
+      col.names <- c('intercept_only','hsv','all_instagram','insta_plus_face')
+    } else {
+      bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['ig_face_means']][[1]])
+      col.names <- c('intercept_only','all_instagram')
+    }
   }
   bf.mat <- bfactor$BF.log.mat
   colnames(bf.mat) <- col.names
