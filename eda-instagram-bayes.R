@@ -15,14 +15,14 @@ use.jags <- FALSE
 use.mcmc.pack <- TRUE
 load.jags <- FALSE
 load.coda <- FALSE
-load.mcmc.pack <- FALSE
+load.mcmc.pack <- TRUE
 if (use.jags) require(rjags)
 if (use.mcmc.pack) require(MCMCpack)
 
 # mcmc params
-n <- 100000
+n <- 200000
 thin <- 10
-burn.in <- 5000
+burn.in <- 10000
 dic.samp <- 1000
 b0 <- 0
 B0 <- 0.0001
@@ -31,6 +31,8 @@ B0 <- 0.0001
 analyze.addtl.data <- FALSE
 standardize.predictors <- TRUE
 posting.cutoff <- FALSE
+compute.separate.hsv.means <- FALSE
+only.created.date <- FALSE
 run.diagnostics <- TRUE
   show.autocorr <- TRUE
   show.gelman <- TRUE
@@ -46,19 +48,28 @@ b.factor <- list()
 varset <- readRDS('varset.rds')
 condition <- 'depression' # depression, pregnancy, cancer, ptsd
 medium <- 'ig' # ig, tw
-kind <- 'MAIN'
+kind <- 'MAIN' # MAIN, before_from_diag, before_from_susp
 addtl <- ifelse (analyze.addtl.data, 'addtl', 'no_addtl')
 stdized <- ifelse (standardize.predictors, 'standardized', 'nonstandardized')
 post.cut <- ifelse (posting.cutoff, 'post_cut', 'post_uncut')
-model.complexities <- c('intercept_only', 'hsv_means', 'metadata_means') 
+if (compute.separate.hsv.means) {
+  model.complexities <- c('intercept_only', 'hsv_means', 'all_ig_means', 'ig_face_means')
+} else {
+  model.complexities <- c('intercept_only', 'all_ig_means', 'ig_face_means')
+}
+
 if (analyze.addtl.data) model.complexities <- c(model.complexities,'ratings_means','all_means')
 
-gb.types <- c('post','created_date','username') 
-gb.types <- c('created_date','username')
+if (only.created.date) {
+  gb.types <- c('created_date')
+} else {
+  gb.types <- c('post','created_date','username')
+}
+ 
 
-# makeup
-model.complexities <- c('metadata_means') 
-gb.types <- c('created_date')
+# adjustments
+#model.complexities <- c('ig_face_means') 
+#gb.types <- c('created_date')
 
 for (gb.type in gb.types) {
 
@@ -111,7 +122,7 @@ for (gb.type in gb.types) {
     } else if (use.mcmc.pack) {
       pack.full.path <- get.jags.path('pack','mcmcpack',condition,medium,kind,gb.type,addtl,stdized,m,post.cut)
       
-      if (load.mcmc.pack) {
+      if (load.mcmc.pack && file.exists(pack.full.path)) {
         load(pack.full.path)
       } else {
         mdf['target'] <- df$target
@@ -138,12 +149,12 @@ for (gb.type in gb.types) {
       if (show.autocorr) autocorr.plot(mcmc)
       # Gelman diagnostics
       if (show.gelman && m!='intercept_only') {
-        gelman.diag(mcmc) # should be around 1.0
-        gelman.plot(mcmc) # red line should converge to black line
+        print(gelman.diag(mcmc))
+        try(gelman.plot(mcmc))
       }
       if (show.geweke && m!='intercept_only') {
-        geweke.diag(mcmc)       ## z-scores; look good [-2, 2]
-        geweke.plot(mcmc)
+        print(geweke.diag(mcmc))
+        try(geweke.plot(mcmc))
       }
       if (show.bayes.p) bayes.p <- get.bayes.p(var.list, mcmc, print.stats=TRUE)
         
@@ -156,7 +167,7 @@ for (gb.type in gb.types) {
   }
   
   if (dic.comparison && use.jags) compare.dic(model.dic, analyze.addtl.data)
-  if (bayes.factor && use.mcmc.pack) b.factor.output <- compare.bayes.factor(b.factor, analyze.addtl.data)
+  if (bayes.factor && use.mcmc.pack) b.factor.output <- compare.bayes.factor(b.factor, analyze.addtl.data, TRUE)
   
 } # end gb.type loop
 

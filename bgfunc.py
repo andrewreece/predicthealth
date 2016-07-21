@@ -1,45 +1,40 @@
-import sqlite3
+import sqlite3, itertools, datetime, pytz, cv2, os, sys, re, pickle, urllib, filecmp
 import pandas as pd
 import numpy as np
-from scipy import linalg
-import itertools
-import datetime
-import pytz
+from re import findall, UNICODE
 from email.utils import parsedate_tz, mktime_tz
+from os import listdir
+from os.path import isfile, join
+from string import Template
 
+from IPython.display import Image, display
 from matplotlib import pyplot as plt
 import matplotlib as mpl
-
 import seaborn as sns
 sns.set_style('white')
 
-import pickle
 from skimage import io, data, color
-import re
-from re import findall,UNICODE
 
-
+from sklearn import cross_validation
+from sklearn import mixture
 from sklearn.preprocessing import scale
 from sklearn.preprocessing import Imputer
 from sklearn.cross_validation import train_test_split
-
 from sklearn.linear_model import LogisticRegression as logreg
 from sklearn.linear_model import LogisticRegressionCV as logregcv
 from sklearn.ensemble import RandomForestClassifier as RFC
 from sklearn.svm import SVC
-
 from sklearn.metrics import confusion_matrix
-from sklearn.metrics import roc_curve, auc, f1_score, precision_score, recall_score
-
-from sklearn import cross_validation
-from sklearn import mixture
+from sklearn.metrics import roc_curve, auc, f1_score, precision_score, recall_score, mean_squared_error
 from sklearn.decomposition import PCA
 
+import scipy.stats as stats
+from scipy import linalg
 from scipy.stats import ttest_ind as ttest
 from scipy.stats import ttest_rel
 from scipy.stats import pearsonr
-import scipy.stats as stats
 
+import statsmodels.api as sm
 from statsmodels.sandbox.stats.multicomp import multipletests
 import statsmodels.api as sm
 import statsmodels.tools.tools as smtools
@@ -673,21 +668,21 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 def out_of_100(prev, prec, spec, rec, N=100):
 	''' Reports model accuracy based on a hypothetical sample of 100 data points.
 		Eg. "out of 100 samples, there were X positive IDs, Y false alarms, and Z false negatives..." '''
-		
-    print 'Out of {} random observations...'.format(N)
-    print
-    n_1 = round(N*prev)
-    n_0 = N - n_1
-    pos_id = round(n_1 * prec)
-    neg_id = round(n_0 * spec)
-    f_alarm = n_1 - pos_id
-    f_neg = n_1 - pos_id
-    print pos_id, "positive IDs"
-    print f_alarm, "false alarms"
-    print f_neg, "false negatives"
-    print neg_id, "negative IDs"
-    print
-    print 'reconstituted total:', np.sum([pos_id, f_alarm, f_neg, neg_id])
+
+	print 'Out of {} random observations...'.format(N)
+	print
+	n_1 = round(N*prev)
+	n_0 = N - n_1
+	pos_id = round(n_1 * prec)
+	neg_id = round(n_0 * spec)
+	f_alarm = n_1 - pos_id
+	f_neg = n_1 - pos_id
+	print pos_id, "positive IDs"
+	print f_alarm, "false alarms"
+	print f_neg, "false negatives"
+	print neg_id, "negative IDs"
+	print
+	print 'reconstituted total:', np.sum([pos_id, f_alarm, f_neg, neg_id])
 
 
 def sample_2_ratings(x,col_pad):
@@ -2298,6 +2293,154 @@ def tag_insomnia(x):
 			return 0
 	else:
 		return None
+
+
+def find_faces(row, pop, condition):
+	url = row['url']
+	path_url = url.split('//scontent.cdninstagram.com/')[1].replace('/','___') + ".jpg"
+	savepath = '/'.join(["photos",condition,pop,"{}".format(path_url)])
+	
+	if not isfile(savepath):
+		urllib.urlretrieve(url, savepath)
+	
+	row['has_face'], row['face_ct'] = face_detect(savepath)
+
+	return row
+
+
+def face_detect(img):
+	''' Detects faces in a photograph using Haar cascades '''
+	''' Modified from source: https://gist.github.com/dannguyen/cfa2fb49b28c82a1068f '''
+	
+	# first argument is the haarcascades path
+	face_cascade_path = "../../haarcascade_frontalface_default.xml"
+	face_cascade = cv2.CascadeClassifier(face_cascade_path)
+
+	# profiles didn't work better than default (and also didn't catch things default missed)
+	#profile_cascade_path = "../../haarcascade_profileface.xml"
+	#profile_cascade = cv2.CascadeClassifier(profile_cascade_path)
+
+	scale_factors = [1.05, 1.4] # you played around and found these two runs to be the best
+	min_neighbors = 4 # you experimented between 1 and 5 here, 4 seemed best.
+	min_size = (20,20) # don't go higher than this, many tiny faces
+	flags = cv2.CASCADE_SCALE_IMAGE
+
+	image = cv2.imread(img)
+
+	found_face = False
+	face_ct = 0
+	
+	for scale in scale_factors:
+		if not found_face:
+			scale_factor = scale
+			for cascade, view in [(face_cascade,'straight')]:#[(face_cascade,'straight'),(profile_cascade,'profile')]:
+				faces = cascade.detectMultiScale(image, 
+												scaleFactor = scale_factor, 
+												minNeighbors = min_neighbors,
+												minSize = min_size, 
+												flags = flags)
+				if len(faces) != 0:
+					found_face = True
+					face_ct += len(faces)
+
+					for ( x, y, w, h ) in faces:
+						cv2.rectangle(image, (x, y), (x + w, y + h), (255, 255, 0), 2)
+						savedir = '/'.join(['photos',condition,pop,'detected',view])
+						savefname = img.split('/')[-1] + ".jpg"
+						savepath = join(savedir,savefname)
+						cv2.imwrite(savepath, image)
+					
+	return(found_face, face_ct)            
+
+
+def show_photo(url, pop, pred_face, doPrint=True):
+	''' Displays photo in Jupyter notebook for face assessment '''
+	
+	if pred_face:
+		path_head = "photos/depression/{}/detected/straight".format(pop)
+	else:
+		path_head = "photos/depression/{}".format(pop)
+		
+	new_fname = url.split('//scontent.cdninstagram.com/')[1].replace('/','___') + ".jpg"
+	
+	if doPrint:
+		print new_fname
+	
+	path = join(path_head, new_fname)
+	
+	try:
+		display(Image(filename=path))
+	except:
+		display(Image(filename=path+'.jpg'))
+
+
+def get_face_stats(subset, when='before', gb_type='created_date'):
+	''' Reports descriptive stats for face detection in given population subset '''
+	
+	if subset == 'main':
+		aset = data['master'][gb_type]
+		subdf = 'main'
+	else:
+		subdf = "from_{}".format(subset)
+		col = "{}_{}".format(when, subset)
+		turn = '{}date'.format(subset)
+
+		aset = data['master'][when][subdf][gb_type].reset_index()
+
+		
+	# masks for all depression (target + control)
+	t_mask = aset.target==1
+	c_mask = aset.target==0
+	
+	print 'face ct avg (target):', aset.ix[t_mask,'face_ct'].mean()
+	print 'face ct std (target):', aset.ix[t_mask,'face_ct'].std()
+	print
+	print 'face ct avg (control):', aset.ix[c_mask,'face_ct'].mean()
+	print 'face ct std (control):', aset.ix[c_mask,'face_ct'].std()
+	
+	
+	#aset = a.ix[a.username.isin(bdate.username) & (a[turn].isnull() | (a[turn]<0)),:]
+
+	print
+	print 'For all data (not just validation samples...):'
+	print '{} set size: {}'.format(subdf,aset.shape[0])
+	print 'target set size:', aset.ix[t_mask,:].shape[0]
+	print 'control set size:', aset.ix[c_mask,:].shape[0]
+	print
+	print
+	
+	print 'Prop HAS FACE for TARGET:', round(aset.ix[t_mask, 'has_face'].mean(), 3)
+	print 'Std prop HAS FACE for TARGET:', round(aset.ix[t_mask, 'has_face'].std(), 3)
+	print
+	print 'Prop HAS FACE for CONTROL:', round(aset.ix[c_mask, 'has_face'].mean(), 3)
+	print 'Std prop HAS FACE for CONTROL:', round(aset.ix[c_mask, 'has_face'].std(), 3)
+
+	print
+	print
+
+	print 'Considering all photos with at least one face...'
+	print
+	print 'Mean FACE CT for TARGET:', round(aset.ix[t_mask & (aset.face_ct>0), 'face_ct'].mean(), 3)
+	print 'STD FACE CT for TARGET:', round(aset.ix[t_mask & (aset.face_ct>0), 'face_ct'].std(), 3)
+	print
+	print 'Mean FACE CT for CONTROL:', round(aset.ix[c_mask & (aset.face_ct>0), 'face_ct'].mean(), 3)
+	print 'STD FACE CT for CONTROL:', round(aset.ix[c_mask & (aset.face_ct>0), 'face_ct'].std(), 3)
+
+	print
+	print
+
+	print 'ttest for has_face:'
+	tout = ttest(aset.ix[t_mask, 'has_face'], aset.ix[c_mask, 'has_face'])
+	print 't = {}, p = {}'.format(tout.statistic, tout.pvalue)
+	print
+
+	print 'ttest for face_ct:'
+	tout = ttest(aset.ix[t_mask & (aset.face_ct>0), 'face_ct'], aset.ix[c_mask & (aset.face_ct>0), 'face_ct'])
+	print 't = {}, p = {}'.format(tout.statistic, tout.pvalue)
+	
+	print 'ttest for face_ct all photos:'
+	tout = ttest(aset.ix[t_mask, 'face_ct'], aset.ix[c_mask, 'face_ct'])
+	print 't = {}, p = {}'.format(tout.statistic, tout.pvalue)
 
 
 ''' OLD REUSABLE CODE
