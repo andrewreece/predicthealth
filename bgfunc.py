@@ -20,6 +20,7 @@ from sklearn import mixture
 from sklearn.preprocessing import scale
 from sklearn.preprocessing import Imputer
 from sklearn.cross_validation import train_test_split
+from sklearn.cross_validation import StratifiedKFold
 from sklearn.linear_model import LogisticRegression as logreg
 from sklearn.linear_model import LogisticRegressionCV as logregcv
 from sklearn.ensemble import RandomForestClassifier as RFC
@@ -33,6 +34,7 @@ from scipy import linalg
 from scipy.stats import ttest_ind as ttest
 from scipy.stats import ttest_rel
 from scipy.stats import pearsonr
+from scipy import interp
 
 import statsmodels.api as sm
 from statsmodels.sandbox.stats.multicomp import multipletests
@@ -119,7 +121,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 	params = {
 			'q': {
 				't': {
-					'meta':	'select {fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat} where d_from_diag_{cond} is not null{ratings_clause}'.format(cond=condition,
+					'meta':	'select {fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat} where created_date is not null and created_date is not "" and d_from_diag_{cond} is not null{ratings_clause}'.format(cond=condition,
 																																																											  ratings_clause=ratings_clause,
 																																																											  plat=platform,
 																																																											  plat_long=platform_long,
@@ -192,17 +194,17 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 					}
 				},
 				'tw':{
-					'created_date':{'id':		'count',
-									'target':	'first',
-									'has_url':	'mean',
-									'is_rt':	'mean',
-									'is_reply':	'mean',
-									'from_diag':'first',
-									'from_susp':'first',
-									'text':		' '.join,
-									'diag_date':'first',
-									'user_id':	'first',
-									'word_count':'mean',
+					'created_date':{'id':			'count',
+									'target':		'first',
+									'has_url':		'mean',
+									'is_rt':		'mean',
+									'is_reply':		'mean',
+									'from_diag':	'first',
+									'from_susp':	'first',
+									'text':			' '.join,
+									'diag_date':	'first',
+									'user_id':		'first',
+									'word_count':	'mean',
 									'before_diag':	'first',
 									'before_susp':	'first'
 					},
@@ -288,6 +290,26 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
+						'no_addtl_means':['total_words',
+								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
 						'model':['total_words',
 								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
 								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
@@ -328,10 +350,50 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
+								   'created_date','diag_date'],
+						'no_addtl_full': ['tweet_id', 'user_id', 'total_words',
+								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
 								   'created_date','diag_date']
 						},
 					'user_id':{
 						'means':['LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
+						'no_addtl_means':['LIWC_happs', 'LabMT_happs',
 								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
@@ -388,10 +450,49 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply', 'target'],
+						'no_addtl_full':	['tweet_id', 'user_id', 
+								   'LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply', 'target']
 						},
 					'created_date':{
 						'means':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply'],
+						'no_addtl_means':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
 								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
@@ -448,7 +549,28 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
+								   'is_rt', 'is_reply', 'target','from_diag','from_susp','before_diag','before_susp',
+								   'created_date','diag_date'],
+						'no_addtl_full':	['tweet_id', 'user_id', 'total_words',
+								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
+								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
+								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
+								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
+								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
+								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
+								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
+								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
+								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
+								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
+								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
+								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
+								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
+								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
+								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
+								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
+								   'is_rt', 'is_reply', 'target','from_diag','from_susp','before_diag','before_susp',
 								   'created_date','diag_date']
 						}
 				}
@@ -456,8 +578,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			},
 			'fields_to_merge':{
 				'tw':{
-					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','before_diag','before_susp','created_date','diag_date'],
-					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','before_diag','before_susp','created_date','diag_date'],
+					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
+					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
 					'user_id':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count']
 					},
 				'ig':{}
@@ -521,6 +643,18 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'description':	'__|__'.join}
 		)
 	return params 
+
+
+def data_loader(load_from, condition, platform, path_head):
+	''' Loads data dict from saved file '''
+
+	if load_from == 'pickle':
+		data = pickle.load(open("{path}{cond}_{pl}_data.p".format(path=path_head,
+																  cond=condition,
+																  pl=platform), 
+								"rb" ) )
+	elif load_from == 'file':
+		pass
 
 
 def report_sample_sizes(params, conn, cond, plat_long, test_cutoff, 
@@ -669,13 +803,17 @@ def out_of_100(prev, prec, spec, rec, N=100):
 	''' Reports model accuracy based on a hypothetical sample of 100 data points.
 		Eg. "out of 100 samples, there were X positive IDs, Y false alarms, and Z false negatives..." '''
 
+	import math 
+
 	print 'Out of {} random observations...'.format(N)
 	print
-	n_1 = round(N*prev)
+	n_1 = math.ceil(N*prev)
+	print 'n1', n_1
 	n_0 = N - n_1
-	pos_id = round(n_1 * prec)
-	neg_id = round(n_0 * spec)
-	f_alarm = n_1 - pos_id
+	print 'n0', n_0
+	pos_id = math.ceil(n_1 * rec)
+	neg_id = math.ceil(n_0 * spec)
+	f_alarm = n_0 - neg_id
 	f_neg = n_1 - pos_id
 	print pos_id, "positive IDs"
 	print f_alarm, "false alarms"
@@ -1001,6 +1139,76 @@ def count_words_in_tweet(d):
 	d['word_count'] = d.text.apply(lambda x: len(x.split()))
 
 
+def fix_from_counts(d):
+	''' Fixes some rows with missing from_diag or from_susp values '''
+
+	def inner_fix_from_counts(dd):
+
+		try: 
+			float(dd['from_diag'])
+		except:
+			created = pd.to_datetime(dd['created_date'])
+			diagnosed = pd.to_datetime(dd['diag_date'])
+			from_d = created - diagnosed
+			if from_d < 0:
+				before_diag = 1
+			else:
+				before_diag = 0
+		return 
+
+	d = d.apply(inner_fix_from_counts, axis=1)
+
+
+def hourly_plot(conn, condition):
+	''' Makes plot of aggregated hourly post data (used mainly for Twitter comparison against De Choudhury) '''
+	
+	tz, tups = to_localtime_wrapper(conn, condition)
+
+	# Rather than try and add a column into meta_tw...
+	# We put meta_tw in a df, add local_time, and then overwrite the old meta_tw with the new one.  Pandas is great.
+
+	metatw = pd.read_sql_query('select * from meta_tw', conn)
+	metatw.fillna('', inplace=True)
+
+
+	reformat_diag_date(metatw)
+	get_local_time_data(metatw, tz)
+	metatw['at_night'] = metatw.local_time.apply(tag_insomnia)
+
+	# Overwrite meta_tw in project.db
+	a = pd.read_sql_query('pragma table_info(meta_tw)', conn)
+	dtypes = {x[1]:x[2] for x in a.values}
+
+	metatw.to_sql('meta_tw', conn, if_exists='replace')
+
+	q = "select username, local_time, d_from_diag_{} as ddate from meta_tw where local_time != ''".format(condition)
+	hastime = pd.read_sql_query(q, conn)
+
+	def make_time_obj(x):
+		if len(x) > 0:
+			return datetime.datetime.strptime(x,"%H:%M:%S").time()
+		else:
+			return x
+
+	#hastime['local_time'] = hastime.local_time.apply(make_time_obj)
+
+	q = "select username from control where platform = 'twitter' and {}='No'".format(condition)
+	c_unames = pd.read_sql_query(q, conn)
+
+	#target_indicator = 'd_from_diag_{}'.format(condition)
+	fields = ['username','local_time']
+
+	hastime_target = hastime.ix[hastime.ddate.notnull(), fields]
+	hastime_target.index = pd.to_datetime(hastime_target.local_time)
+
+	hastime_control = hastime.ix[hastime.username.isin(c_unames.username),fields]
+	hastime_control.index = pd.to_datetime(hastime_control.local_time)
+
+	hastime_target.local_time.resample('H').count().plot(label='target')
+	hastime_control.local_time.resample('H').count().plot(label='control')
+	plt.legend()
+
+
 def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=False, 
 					   t_maxback=-(365 + 60), t_maxfor=365, c_maxback=365*2, doPrint=False,
 					   key='tweets'):
@@ -1013,6 +1221,11 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=Fa
 
 	unames = get_pop_unames(params, m, conn, pop)
 	meta = get_meta(params, conn, pop, doPrint)
+
+	# because you converted None to '' in make_hourly_plot for some reason
+	if (meta.from_diag.dtype != float) & (meta.from_diag.dtype != int):
+		meta[['from_diag','from_susp']] = meta[['from_diag','from_susp']].replace({'':None}).astype(float) 
+	
 	all_tweets = meta.ix[meta.username.isin(unames.username), :].copy()
 	all_tweets.drop_duplicates(subset='id', inplace=True)
 
@@ -1048,6 +1261,7 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=Fa
 					)
 		tweets = all_tweets.ix[ mask, : ].copy()
 	else:
+		fix_from_counts(all_tweets)
 		tweets = all_tweets.copy()
 	
 
@@ -1305,7 +1519,7 @@ def make_groupby(df, m, pop, params, gb_types,
 			
 		# testing
 		#print 
-		#print 'ROUND:', m, pop, gb_type 
+		#print 'ROUND:', m, pop, gb_type, 'period:', period, 'turn:', turn_point
 		#print 'to_group_df shape:', to_group_df.shape
 		#print to_group_df.columns
 		#print 'agg cols:'
@@ -1349,10 +1563,10 @@ def make_groupby(df, m, pop, params, gb_types,
 			add_class_indicator(df['gb'][gb_type], pop)
 
 		elif m == 'tw':
+
 			for gbel in gb_list:
 				if gbel in df['gb'][gb_type].columns:
 					df['gb'][gb_type].drop(gbel, 1, inplace=True)
-
 
 			wf = get_word_feats(params, conn, pop, condition, tunit = gb_type)
 			wf.created_date = pd.to_datetime(wf.created_date)
@@ -1378,7 +1592,7 @@ def make_groupby(df, m, pop, params, gb_types,
 		# testing:
 			#print 'wf shape:', wf.shape 
 			#print ('final gb shape [{} {} {} {} {}]:'.format(m, pop, gb_type, period, turn_point), 
-			#		df['gb'][gb_type].shape )
+					#df['gb'][gb_type].shape )
 		
 		# testing
 		#print 'final gb columns:'
@@ -1597,9 +1811,8 @@ def roc_wrapper(fits, ctype, y_test, X_test, plat):
 	plt.show()
 
 
-def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False):
+def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cutoff=.01):
 	# Plot the feature importances of the forest
-	imp_cutoff = 0.01 # below this level of importance suggests a variable really doesn't matter
 	fimpdf = pd.DataFrame(fits[ctype]['clf'].feature_importances_, index=model_feats, columns=['importance'])
 	
 	if tall_plot:
@@ -1626,20 +1839,31 @@ def cleanX(X, doPrint=False):
 	X.drop(to_drop,1,inplace=True)
 
 
-def pca_explore(pca, X):
+def pca_explore(pca, X, best_pca_num_comp):
 	''' Shows variance accounted for by principal components '''
 
-	plt.figure()
+	already_optimized = best_pca_num_comp
 	X_reduced = pca.fit_transform(scale(X))
-	print 'Total vars:', X.shape[1]
-	print 'Num components selected by Minka MLE:', pca.components_.shape[0]
-	print 'Cumulative % variance explained per component:'
-	cumvar = np.cumsum(np.round(pca.explained_variance_ratio_, decimals=4)*100)
-	print cumvar
-	plt.plot(cumvar)
-	_=plt.ylim([0,100])
-	plt.show()
-	return X_reduced, pca.n_components_
+
+	if not already_optimized:
+		print 'Total vars:', X.shape[1]
+		print 'Num components selected by Minka MLE:', pca.components_.shape[0]
+		
+		print 'Cumulative % variance explained per component:'
+		cumvar = np.cumsum(np.round(pca.explained_variance_ratio_, decimals=4)*100)
+		print cumvar
+		
+		plt.figure()
+		plt.plot(cumvar)
+		_=plt.ylim([0,100])
+		plt.show()
+
+		n_comp = pca.n_components_
+
+	else:
+		n_comp = best_pca_num_comp
+
+	return X_reduced, n_comp
 
 
 def pca_model(pca, X_reduced, y, num_pca_comp):
@@ -1656,11 +1880,15 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	
 	score = cross_validation.cross_val_score(lr, np.ones((n,1)), y.ravel(), cv=kf_10, scoring='f1').mean()    
 	f1.append(score) 
-
+	
 	for i in np.arange(1,num_pca_comp+1):
+		print 'pca comp #:', i
 		score = cross_validation.cross_val_score(lr, X_reduced[:,:i], y.ravel(), cv=kf_10, scoring='f1').mean()
 		f1.append(score)
-	
+
+	#testing
+	print 'after pca cv loop'    
+
 	new_num_pca_comp = np.argmax(np.array(f1)) + 1 # redefine num components based on max F1 score
 	print 'Num pca comp displayed:', num_pca_comp
 	print 'Optimal number of components:', new_num_pca_comp # optimal num components based on max F1 score
@@ -1683,39 +1911,93 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	return new_num_pca_comp
 
 
-def pca_report(fit, feats, N=3):
-	''' Prints components loadings for the top N components.
-		Three separate printouts are made, each is sorted with the highest loading variables per component on top
+def pca_report(fit, feats, N_comp=5, N_elem=10):
+	''' Prints N_elem components loadings for the top N_comp components.
+		Three separate printouts are made, each is sorted with the highest N_elem loading variables per component on top
 	'''
-	loaddf = (pd.DataFrame(fit.components_.T[:,0:N], 
-						   columns=['PCA_{}'.format(x) for x in np.arange(N)], 
+	loaddf = (pd.DataFrame(fit.components_.T[:,0:N_comp], 
+						   columns=['PCA_{}'.format(x) for x in np.arange(N_comp)], 
 						   index=feats)
 			  .abs()
 			  )
-	for n in np.arange(N):
+	for n in np.arange(N_comp):
 		comp_ix = 'PCA_{}'.format(n)
-		print loaddf.sort_values(comp_ix,ascending=False).ix[0:10,comp_ix]
+		print loaddf.sort_values(comp_ix,ascending=False).ix[0:N_elem,comp_ix]
 		print 
 
+		
+def update_acc_metrics(fit, X_test, y_test, cv_iters, acc_avg):
+	''' Updates accuracy metrics for each round of model cross-validation '''
+	
+	probas_ = fit.predict_proba(X_test)
+	actual_neg = y_test==0
+	preds = fit.predict(X_test)
+	pred_neg = preds==0
+	tn = np.sum(actual_neg & pred_neg)
+	pneg = np.sum(pred_neg)
+	neg = np.sum(actual_neg)
+	cv_iters['tn'].append(tn)
+	cv_iters['pneg'].append(pneg)
+	cv_iters['neg'].append(neg)
+	cv_iters['npv'].append(round( tn / float(pneg), 3))
+	cv_iters['specificity'].append(round( tn / float(neg), 3 ))
+	cv_iters['precision'].append(round(precision_score(y_test, 
+											   fit.predict(X_test), 
+											   average=acc_avg), 3))
+	cv_iters['recall'].append(round(recall_score(y_test, 
+										 fit.predict(X_test), 
+										 average=acc_avg), 3))
+	cv_iters['f1'].append(round(f1_score(y_test, 
+								 fit.predict(X_test), 
+								 average=acc_avg), 3))
+	return probas_
+	
+def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None):
+	''' Plots ROC curve '''
+	
+	if i is not None:
+		# Compute ROC curve and area under the curve
+		fpr, tpr, thresholds = roc_curve(y_test, probas_[:, 1])
+		mean_tpr += interp(mean_fpr, fpr, tpr)
+		mean_tpr[0] = 0.0
+		roc_auc = auc(fpr, tpr)
+		plt.plot(fpr, tpr, lw=1, label='ROC fold %d (area = %0.2f)' % (i, roc_auc))
+	else:
+		plt.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
+		plt.xlim([-0.05, 1.05])
+		plt.ylim([-0.05, 1.05])
+		plt.xlabel('False Positive Rate')
+		plt.ylabel('True Positive Rate')
+		plt.title('ROC Plot: Random Forests')
+		plt.legend(loc="lower right")
+		plt.show()
+	
+	
+def initialize_model_fits(fits, kernel, rfp):
+	fits['lr'] = {'name':'Logistic Regression','clf':logregcv(class_weight='auto')}
+	fits['svc'] = {'name':'Support Vector Machine','clf':SVC(class_weight='auto', kernel=kernel, probability=True)}
+	fits['rf'] = {'name':'Random Forests','clf':RFC(n_estimators=rfp['n_est'], 
+													class_weight=rfp['class_wt'],
+													max_features=rfp['max_feat'],
+													min_samples_split=rfp['min_ss'],
+													min_samples_leaf=rfp['min_sl'],
+													max_depth=rfp['max_depth']
+												   )}
+	
 
-def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None, 
-				tall_plot=False, n_est=100, kernel='rbf', use_pca=False, num_pca_comp=None,
+def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False,
 				labels={'known_0':'known_control',
 						'known_1':'known_target',
 						'pred_0':'pred_control',
 						'pred_1':'pred_target'}):
 
-	''' NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec. clf.) '''
+	''' NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec.) '''
 
 	mdata = d['data']
 	title = d['name']
 	unit = d['unit']
 	target = d['target'] 
 	feats = d['features']
-	acc_avg = d['acc_avg']
-
-	if 'tall_plot' in d.keys():
-		tall_plot = d['tall_plot']
 	
 	X = mdata[feats].copy()
 	y = mdata[target]
@@ -1728,12 +2010,19 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 	X = imp.fit_transform(X,y)
 	
 	if use_pca:
-		# http://stats.stackexchange.com/questions/82050/principal-component-analysis-and-regression-in-python
-		# http://nxn.se/post/36838219245/loadings-with-scikit-learn-pca
-		# http://stackoverflow.com/questions/22984335/recovering-features-names-of-explained-variance-ration-in-pca-with-sklearn
+		# stats.stackexchange.com/questions/82050/principal-component-analysis-and-regression-in-python
+		# nxn.se/post/36838219245/loadings-with-scikit-learn-pca
+		# stackoverflow.com/questions/22984335/recovering-features-names-of-explained-variance-ration-in-pca-with-sklearn
+		
 		pca = PCA(n_components='mle')
-		X_reduced, num_pca_comp = pca_explore(pca, X)
-		num_pca_comp = pca_model(pca, X_reduced, y, num_pca_comp)
+		X_reduced, num_pca_comp = pca_explore(pca, X, d['best_pca_num_comp'])
+		
+		# IMPORTANT! Only need to run pca_model2 once to determine best num_pca_comp. Takes awhile to run (~20 min for tw).
+		if d['best_pca_num_comp'] is None:
+			num_pca_comp = pca_model(pca, X_reduced, y, num_pca_comp)
+		else:
+			num_pca_comp = d['best_pca_num_comp'] # passed in from notebook
+			
 		pca_report(pca, model_feats)
 
 		# we do all subsequent modeling with the best PCA component vectors
@@ -1744,73 +2033,83 @@ def make_models(d, test_size=0.3, clf_types=['lr','rf','svc'], excluded_set=None
 
 		X = X_reduced[:,0:max_ix].copy() 
 		model_feats = pd.Series(['pca_{}'.format(x) for x in np.arange(max_ix)])
-		#testing
-		#print 'num_pca_comp:', num_pca_comp
-		#print 'X_reduced shape:', X_reduced.shape 
-		#print np.arange(0,max_ix)
-		#print np.arange(1,max_ix)
-		#print 'PCA X shape:', X.shape
-		#print 'PCA model_feats shape:', model_feats.shape 
-		#print 'PCA model_feats:', model_feats
+
+		pca_df = pd.DataFrame(X, columns=model_feats)
+		pca_df['target'] = y.values
 
 	else:
-		pca = None
-
-	X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=test_size)
+		pca_df = None
 	
 	fits = {}
-
-	fits['lr'] = {'name':'Logistic Regression','clf':logregcv(class_weight='auto')}
-	fits['rf'] = {'name':'Random Forests','clf':RFC(n_estimators=n_est, class_weight='balanced')}
-	fits['svc'] = {'name':'Support Vector Machine','clf':SVC(class_weight='auto', kernel=kernel, probability=True)}
+	initialize_model_fits(fits, d['kernel'], d['rf_params'])
 	
+	master_results = []
+	
+	mean_tpr = 0.0
+	mean_fpr = np.linspace(0, 1, 100)
+	ct = 0
+	best_f1 = 0
+	
+	cv_len = 1
+	
+	master_results = {}
+	cv_iters = {'tn':[], 'fn':[], 'pneg':[], 'neg':[], 'precision':[], 'specificity':[], 'recall':[], 'npv':[], 'f1':[] }
+   
 	for ctype in clf_types:
-		fits[ctype]['clf'].fit(X_train,y_train)
+		for i in range(cv_len):
 			
-	if use_pca:
-		print 
-		print 'NOTE: ALL MODELS ON THIS RUN USE PCA COMPONENTS!'
-		print
+			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=d['test_size'])
 
-	print 'UNIT OF OBSERVATION:', unit.upper()
-	total_obs = X_test.shape[0]
-	total_neg = np.sum(y_test==0)
+			fit = fits[ctype]['clf'].fit(X_train, y_train)
 
-	prop_neg = round((total_neg)/float(total_obs),3)
+			probas_ = update_acc_metrics(fit, X_test, y_test, cv_iters, d['acc_avg'])
+			plot_roc(y_test, probas_, mean_tpr, mean_fpr, i)
 
-	if prop_neg > 0.5:
-		majority_class = 'control'
-		pos_label = 0
-		naive_acc = prop_neg
-	else:
-		majority_class = 'target'
-		pos_label = 1
-		naive_acc = 1 - prop_neg
-
-	print 'NAIVE ACCURACY ALL MAJORITY:', naive_acc
-	print "  *'ALL MAJORITY' = all observations are predicted as majority class (here: {})".format(majority_class)
-	print 
-	print
-	
-	output = {}
-
-	output['X_test'] = X_test
-	output['y_test'] = y_test
-
-	for ctype in clf_types:
+		# compute mean accuracy metrics over cv iterations, print results
+		for metric in ['tn','pneg','neg','npv','specificity','precision','recall','f1']:
+			master_results[metric] = (round(np.mean(cv_iters[metric]),4), round(np.std(cv_iters[metric]),4))  
+			print metric.upper(), '::', master_results[metric]
 		
-		print_model_summary(fits[ctype], ctype,
-							target, title, X_test, y_test, labels, average=acc_avg, pos_label=pos_label)
+		plot_roc(y_test, probas_, mean_tpr, mean_fpr)
 
-		roc_wrapper(fits, ctype, y_test, X_test, d['platform'])
+		if use_pca:
+			print 
+			print 'NOTE: ALL MODELS ON THIS RUN USE PCA COMPONENTS!'
+			print
+		
+		print 'UNIT OF OBSERVATION:', unit.upper()
+
+		total_obs = X_test.shape[0]
+		total_neg = np.sum(y_test==0)
+		prop_neg = round((total_neg)/float(total_obs),3)
+
+		if prop_neg > 0.5:
+			pos_label = 0
+		else:
+			pos_label = 1
+
+
+		output = {}
+		output['X_test'] = X_test
+		output['y_test'] = y_test
+
+		output[ctype] = fits[ctype]['clf']
+
 		
 		if ctype == 'rf':
-			importance_wrapper(fits, ctype, model_feats, title, tall_plot)
+			importance_wrapper(fits, ctype, model_feats, title, d['tall_plot'], d['rf_params']['imp_cutoff'])
 	
 		output[ctype] = fits[ctype]['clf']
 
-	return output, pca
+		actualpos = np.sum(output['y_test'])
+		prevalence = actualpos / float(output['X_test'].shape[0])
 
+		#print_model_summary(fits[ctype], ctype, target, title, X_test, y_test, labels, average=acc_avg, pos_label=pos_label)
+
+		out_of_100(prevalence, master_results['precision'][0], master_results['specificity'][0], master_results['recall'][0])
+	
+	return output, pca_df, best_f1, master_results
+	
 
 def ttest_output(a, b, varset, ttype, correction=True, alpha=0.05, method='bonferroni'):
 	''' performs independent-samples t-tests with bonferroni correction '''
@@ -1954,7 +2253,7 @@ def logreg_output(dm, resp):
 	''' Performs frequentist logistic regression, returns model stats '''
 	logit = sm.Logit(resp, dm)
 	# fit the model
-	result = logit.fit()
+	result = logit.fit(maxiter=100)
 	print result.summary()
 	print 
 	print 'Odds ratios:'
@@ -1964,6 +2263,16 @@ def logreg_output(dm, resp):
 def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
 	''' formatting wrapper for logreg_output() '''
 
+	if additional_data == 'pca':
+		predictors = [col for col in master.columns if col != 'target']
+		response = master[target]
+		design_matrix = smtools.add_constant(master[predictors])
+	else:
+		#print 'vars:', varset[gb_type][vlist]
+		predictors = varset[gb_type][vlist] 
+		response = master[gb_type][target]
+		design_matrix = smtools.add_constant(master[gb_type][predictors]) # adds bias term, ie. vector of ones
+
 	print 'UNIT OF MEASUREMENT:', gb_type
 	print
 
@@ -1972,12 +2281,21 @@ def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
 	else:
 		vlist = 'no_addtl_means'
 
-	#print 'vars:', varset[gb_type][vlist]
-	predictors = varset[gb_type][vlist] 
-	response = master[gb_type][target]
-	design_matrix = smtools.add_constant(master[gb_type][predictors]) # adds bias term, ie. vector of ones
-
 	logreg_output(design_matrix, response)
+
+
+def save_master_to_file(additional_data, posting_cutoff, use_pca, gb_type, report, condition, m, save_df):
+	''' save csv of master data for target-type // groupby-type '''
+
+	addtl = 'addtl-data' if additional_data else 'no-addtl-data'
+	postcut = 'post-cut' if posting_cutoff else 'post-uncut'
+	pca_status = 'pca' if use_pca else 'no-pca'
+	gbt = gb_type.replace('_','-')
+	subset = report.replace('_','-')
+	fpath = '/'.join(['data-files',condition,m,gb_type])
+	fname = '_'.join([condition,m,gbt,subset,postcut,pca_status])
+	csv_name = '{}/{}.csv'.format(fpath,fname)
+	save_df.to_csv(csv_name, encoding='utf-8', index=False)
 
 
 def master_actions(master, target, control, condition, m, params, gb_type, 
@@ -2006,15 +2324,6 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 	if aparams['corr']:
 		corr_plot(master, m, gb_type, params['vars'], additional_data, aparams['print_corrmat'])
 
-	if aparams['save_to_file']:
-		# save csv of target-type // groupby-type
-		addtl = 'addtl_data' if additional_data else 'no_addtl_data'
-		postcut = 'post_cut' if posting_cutoff else 'post_uncut'
-		fpath = '/'.join(['data-files',condition,m,gb_type])
-		fname = '_'.join([condition,m,gb_type,report,addtl,postcut])
-		csv_name = '{}/{}.csv'.format(fpath,fname)
-		master[gb_type].to_csv(csv_name, encoding='utf-8', index=False)
-
 	if aparams['ml']:
 		print 'Building ML models...'
 		print 
@@ -2022,24 +2331,44 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 			vlist = 'means'
 		else:
 			vlist = 'no_addtl_means'
+
 		model_df = {'name':'Models: {} {}'.format(report, gb_type),
 					'unit':gb_type,
 					'data':master[gb_type],
 					'features':params['vars'][m][gb_type][vlist],
 					'target':'target',
 					'platform':m,
+					'test_size':.3, # test split for train/test
+					'acc_avg':'binary',
+					'best_pca_num_comp':aparams['best_pca'], # opt: 69 for tw-MAIN-created_date, but 2 works also!
+					'kernel':'rbf', # for SVC, not used anymore
 					'tall_plot':aparams['tall_plot'],
-					'acc_avg':aparams['acc_avg']
+					'acc_avg':aparams['acc_avg'],
+					'rf_params': {# params optimized with 5-fold CV, see optimize_rf_hyperparams()
+								  'class_wt':'balanced',
+								  'max_feat':'sqrt',
+								  'n_est':10,
+								  'min_ss':2,
+								  'min_sl':1,
+								  'max_depth':None,
+								  'imp_cutoff':.015} 
 				   }
 
-		output, pca = make_models(model_df, clf_types=clfs, 
-								  excluded_set=params['model_vars_excluded'][m][gb_type],
-								  use_pca=use_pca)
+		output, pca_df, best_f1, master_results = make_models(model_df, clf_types=clfs, 
+														   excluded_set=params['model_vars_excluded'][m][gb_type],
+														   use_pca=use_pca)
 
 		for k in output.keys():
 			master['model'][gb_type][k] = output[k]
 
-	if aparams['nhst']:
+	if aparams['save_to_file']:
+		if use_pca:
+			save_df = pca_df
+		else:
+			save_df = master[gb_type]
+		save_master_to_file(additional_data, posting_cutoff, use_pca, gb_type, report, condition, m, save_df)
+
+	if aparams['nhst'] and aparams['use_ttest']:
 		print
 		print 'TTEST'
 		ttest_out = ttest_wrapper(master, gb_type, params['vars'][m], additional_data)
@@ -2049,7 +2378,6 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 		print
 		print 'LOGISTIC REGRESSION'
 		print logreg_wrapper(master, gb_type, params['vars'][m], additional_data)
-
 
 
 def before_vs_after(df, gb_type, m, condition, varset, aparams, additional_data, ncols=4):
@@ -2163,7 +2491,7 @@ def create_word_feats_wrapper(pop_longs, gb_types, data, condition, conn, write_
 	for pop_long in pop_longs:
 		for tunit in gb_types:
 			print 'In {} :: {}'.format(pop_long,tunit)
-			create_word_feats(data[pop_long], tunit, condition, conn, write_to_db=True, testing=False)
+			create_word_feats(data[pop_long], tunit, condition, conn, write_to_db=True, testing=testing)
 
 
 def create_word_feats(df, tunit, condition, conn, write_to_db=False, testing=False):
@@ -2277,7 +2605,7 @@ def get_time_only(x):
 	else:
 		return x
 
-def get_local_time_data(metatw):
+def get_local_time_data(metatw, tz):
 	metatw['local_timestamp'] = tz.local_timestamp
 	metatw['local_time'] = metatw.local_timestamp.apply(get_time_only)
 
@@ -2442,6 +2770,118 @@ def get_face_stats(subset, when='before', gb_type='created_date'):
 	tout = ttest(aset.ix[t_mask, 'face_ct'], aset.ix[c_mask, 'face_ct'])
 	print 't = {}, p = {}'.format(tout.statistic, tout.pvalue)
 
+
+def optimize_rf_hyperparams(X, y):
+	''' Optimizes Random Forest hyperparameters. 
+
+		WARNING: Takes 50+ hours to run!!!  (2160 different configurations)
+
+		Uses suggestions from: http://blog.kaggle.com/2016/07/21/approaching-almost-any-machine-learning-problem-abhishek-thakur '''
+	
+	labels={'known_0':'known_control',
+						'known_1':'known_target',
+						'pred_0':'pred_control',
+						'pred_1':'pred_target'}
+	target = 'target'
+	title = 'rf hyperparam optimization'
+	acc_avg = 'binary'
+	
+	fits = {}
+	ctype = 'rf'
+	unit = 'created_date'
+	
+	cv = StratifiedKFold(y, n_folds=5)
+
+	n_ests = [120, 300, 500, 800, 1200]
+	max_depths = [5, 8, 15, 25, 30, None]
+	min_samples_splits = [1, 2, 5, 10, 15, 100]
+	min_samples_leaf = [1, 2, 5, 10]
+	max_features = ['log2','sqrt',None]
+	
+	master_results = []
+	
+	ct = 0
+	best_f1 = 0
+	
+	for max_feat in max_features:
+		for n_est in n_ests:
+			for max_depth in max_depths:
+				for min_ss in min_samples_splits:
+					for min_sl in min_samples_leaf:
+						
+						if ct % 10 == 0:
+							print 'ROUND:', ct
+						
+						master_results.append({'max_feat':max_feat,
+												'n_est':n_est,
+												'max_depth':max_depth,
+												'min_ss':min_ss,
+												'min_sl':min_sl
+											  }
+											 )
+  
+						
+						fits['rf'] = {'name':'Random Forests',
+									  'clf':RFC(n_estimators=n_est, 
+												class_weight='balanced',
+												max_features=max_feat,
+												min_samples_split=min_ss,
+												min_samples_leaf=min_sl,
+												max_depth=max_depth)}
+						
+						
+						mean_tpr = 0.0
+						mean_fpr = np.linspace(0, 1, 100)
+						cv_iters = {'tn':[],
+									'fn':[],
+									'pneg':[],
+									'neg':[],
+									'precision':[],
+									'specificity':[],
+									'recall':[],
+									'npv':[],
+									'f1':[]
+								   }
+						
+						for i, (train, test) in enumerate(cv):
+							fit = fits[ctype]['clf'].fit(X[train], y[train])
+							probas_ = fit.predict_proba(X[test])
+
+							actual_neg = y[test]==0
+							preds = fit.predict(X[test])
+							pred_neg = preds==0
+
+							tn = np.sum(actual_neg & pred_neg)
+							pneg = np.sum(pred_neg)
+							neg = np.sum(actual_neg)
+							cv_iters['tn'].append(tn)
+							cv_iters['pneg'].append(pneg)
+							cv_iters['neg'].append(neg)
+							cv_iters['npv'].append(round( tn / float(pneg), 3))
+							cv_iters['specificity'].append(round( tn / float(neg), 3 ))
+							cv_iters['precision'].append(round(precision_score(y[test], 
+																	   fit.predict(X[test]), 
+																	   average=acc_avg), 3))
+							cv_iters['recall'].append(round(recall_score(y[test], 
+																 fit.predict(X[test]), 
+																 average=acc_avg), 3))
+							cv_iters['f1'].append(round(f1_score(y[test], 
+														 fit.predict(X[test]), 
+														 average=acc_avg), 3))
+							
+						for metric in ['tn','pneg','neg','npv','specificity','precision','recall','f1']:
+							
+							master_results[ct][metric] = np.mean(cv_iters[metric])
+						
+						if master_results[ct]['f1'] > best_f1:
+							best_f1 = master_results[ct]['f1']
+							print 'ALERT new best f1 = {} at params :: '.format(best_f1)
+							print 'max_feat:',max_feat, 'n_est:',n_est, 'max_depth:',max_depth, 'min_ss:',min_ss, 'min_sl',min_sl
+							print    
+						
+						ct += 1
+
+	return master_results, best_f1
 
 ''' OLD REUSABLE CODE
 
