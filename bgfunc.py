@@ -2276,7 +2276,8 @@ def compare_filters(data, conn, level, gb_type, show_figs=True):
 
 
 def logreg_output(dm, resp):
-	''' Performs frequentist logistic regression, returns model stats '''
+	''' Performs frequentist logistic regression, prints model stats, returns log odds '''
+	
 	logit = sm.Logit(resp, dm)
 	# fit the model
 	result = logit.fit(maxiter=100)
@@ -2285,9 +2286,12 @@ def logreg_output(dm, resp):
 	print 'Odds ratios:'
 	print np.exp(result.params)
 
+	return result.params 
 
-def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
-	''' formatting wrapper for logreg_output() '''
+
+def logreg_wrapper(master, gb_type, vlist, varset, additional_data, target='target'):
+	''' formatting wrapper for logreg_output() 
+		returns list of tuples: (predictor_name, log_odds) '''
 
 	if additional_data == 'pca':
 		predictors = [col for col in master.columns if col != 'target']
@@ -2302,12 +2306,8 @@ def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
 	print 'UNIT OF MEASUREMENT:', gb_type
 	print
 
-	if additional_data:
-		vlist = 'means'
-	else:
-		vlist = 'no_addtl_means'
-
-	logreg_output(design_matrix, response)
+	logodds = logreg_output(design_matrix, response)
+	return zip(predictors,logodds)
 
 
 def save_master_to_file(additional_data, posting_cutoff, use_pca, pca_num_comp, gb_type, report, condition, m, save_df):
@@ -2320,7 +2320,7 @@ def save_master_to_file(additional_data, posting_cutoff, use_pca, pca_num_comp, 
 	if m == 'tw':
 		fname = '_'.join([condition,m,gb_type,report,pca_status])
 	elif m == 'ig':
-		fname = '_'.join([condition,m,gb_typet,report,postcut,pca_status])
+		fname = '_'.join([condition,m,gb_type,report,postcut,pca_status])
 	csv_name = '{}/{}.csv'.format(fpath,fname)
 	save_df.to_csv(csv_name, encoding='utf-8', index=False)
 
@@ -2400,16 +2400,23 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 		save_master_to_file(additional_data, posting_cutoff, use_pca, pca_ct, 
 							gb_type, report, condition, m, save_df)
 
-	if aparams['nhst'] and aparams['use_ttest']:
-		print
-		print 'TTEST'
-		ttest_out = ttest_wrapper(master, gb_type, params['vars'][m], additional_data)
-		master['model'][gb_type]['ttest'] = ttest_out[0]
-		master['model'][gb_type]['ttest_pvals'] = ttest_out[1]
+	if aparams['nhst']:
+
+		if additional_data:
+			vlist = 'means'
+		else:
+			vlist = 'no_addtl_means'
 
 		print
 		print 'LOGISTIC REGRESSION'
-		print logreg_wrapper(master, gb_type, params['vars'][m], additional_data)
+		master['model']['logodds'] = logreg_wrapper(master, gb_type, vlist, params['vars'][m], additional_data)
+
+		if aparams['use_ttest']:
+			print
+			print 'TTEST'
+			ttest_out = ttest_wrapper(master, gb_type, params['vars'][m], additional_data)
+			master['model'][gb_type]['ttest'] = ttest_out[0]
+			master['model'][gb_type]['ttest_pvals'] = ttest_out[1]
 
 
 def before_vs_after(df, gb_type, m, condition, varset, aparams, additional_data, ncols=4):
@@ -2917,139 +2924,159 @@ def optimize_rf_hyperparams(X, y):
 
 
 def fit_hmm(df, preds, K=2, show_hist=True,
-            sort_cols=['user_id','created_date'], gb_col='user_id', ct_col='target'):
-    ''' Fits K-state Hidden Markov Model on sorted data, returns class probabilities'''
-    
-    # sort data by user and then by posting chronology
-    hmmdf = df.sort_values(sort_cols).copy()
+			sort_cols=['user_id','created_date'], gb_col='user_id', ct_col='target'):
+	''' Fits K-state Hidden Markov Model on sorted data, returns class probabilities'''
+	
+	# sort data by user and then by posting chronology
+	hmmdf = df.sort_values(sort_cols).copy()
 
-    # HMM needs to know how many posts are in the chronology for each user
-    # NB: ct_col here is not special, we can use any column that count() turns into a count vector.
-    lengths = hmmdf.groupby(gb_col).count()[ct_col].values
-    
-    # see Working with Multiple Sequences for more on the lengths argument
-    # http://hmmlearn.readthedocs.io/en/latest/tutorial.html#training-hmm-parameters-and-inferring-the-hidden-states
-    hmm = GaussianHMM(n_components=K).fit( hmmdf[preds], lengths )
+	# HMM needs to know how many posts are in the chronology for each user
+	# NB: ct_col here is not special, we can use any column that count() turns into a count vector.
+	lengths = hmmdf.groupby(gb_col).count()[ct_col].values
+	
+	# testing
+	print 'num predictors:', preds.shape
+	# see Working with Multiple Sequences for more on the lengths argument
+	# http://hmmlearn.readthedocs.io/en/latest/tutorial.html#training-hmm-parameters-and-inferring-the-hidden-states
+	hmm = GaussianHMM(n_components=K).fit( hmmdf[preds], lengths )
 
-    probas = hmm.predict_proba( hmmdf[preds] )
-    
-    for i in range(K):
-        hmmdf['proba{}'.format(i)] = probas[:,i]
+	print 'num hmm means:', hmm.means_.shape 
 
-    if show_hist:
-        which_prob = 1
-        plt.figure(figsize=(6,3))
-        _=plt.hist(probas[:,which_prob], bins=100)
-        plt.yscale('log')
-        plt.title('Probability histogram for class {}'.format(which_prob))
-        
-    return hmm, hmmdf.reset_index(drop=True)
+	probas = hmm.predict_proba( hmmdf[preds] )
+	
+	for i in range(K):
+		hmmdf['proba{}'.format(i)] = probas[:,i]
 
-
-def show_class_diffs(hmm, hmmdf, predictors, to_show=10, show_neg=True):
-    ''' Shows difference of parameter means between HMM State 1 and State 2.  For 2-state HMM only. 
-        Note: State 0 for a given fit may be State 1 for a subsequent fit! '''
-
-    # the zeros column is a placeholder for State1-State2, which you create using apply() 
-    hmm_diff = pd.DataFrame(np.array([xrange(hmmdf[predictors].columns.shape[0]), 
-                                      np.zeros(hmmdf[predictors].shape[1])]    ).T, 
-                            index = hmmdf[predictors].columns, 
-                            columns = ['col_idx','State1-State2'])
-    hmm_diff.col_idx = hmm_diff.col_idx.astype(int)
-    hmm_diff = hmm_diff.apply(lambda x: np.array([int(x[0]), hmm.means_[1,x[0]] - hmm.means_[0,x[0]]]), axis=1)
-    hmm_diff = pd.DataFrame(hmm_diff)
-    
-    print 'Top {} cases where State 1 < State 2'.format(to_show)
-    print
-    return hmm_diff.sort_values('State1-State2', ascending=show_neg).iloc[0:to_show]
+	if show_hist:
+		which_prob = 1
+		plt.figure(figsize=(6,3))
+		_=plt.hist(probas[:,which_prob], bins=100)
+		plt.yscale('log')
+		plt.title('Probability histogram for State {}'.format(which_prob))
+		
+	return hmm, hmmdf.reset_index(drop=True)
 
 
-def compare_hmm_means(hmm, hmmdf, cols=['LabMT_happs'], state=0, decision=0.5, K=2):
-    ''' T-tests to determine if State1 and State0 means are different for obs. assigned to each state by HMM 
-        Kwargs: state -> which HMM state number to split on, decision -> cut point for state membership '''
-    
-    antistate = int(np.logical_not(state))
-    
-    for col in cols:
-        var_idx = np.where(hmmdf.columns==col)[0][0]
-        
-        state_col = 'proba{}'.format(state)
-        states = {}
-        state_likely = hmmdf[state_col] >= 0.5
-        states[state] = hmmdf[col][ state_likely ] # observations probably in state 0
-        states[antistate] = hmmdf[col][ ~state_likely ] # observations probably in state 1
+def show_class_diffs(hmm, hmmdf, predictors, to_show=10, show_neg=True, diff_colname='State1-State0'):
+	''' Shows difference of parameter means between HMM State 1 and State 2.  For 2-state HMM only. 
+		Note: State 0 for a given fit may be State 1 for a subsequent fit! '''
 
-        hmm_means = {0:hmm.means_[0,var_idx],
-                     1:hmm.means_[1,var_idx]}
+	# the zeros column is a placeholder for State1-State0, which you create using apply() 
+	hmm_diff = pd.DataFrame(np.array([xrange(hmmdf[predictors].columns.shape[0]), 
+									  np.zeros(hmmdf[predictors].shape[1])]    ).T, 
+							index = hmmdf[predictors].columns, 
+							columns = ['col_idx',diff_colname])
 
-        test = ttest(states[state], states[antistate])
+	hmm_diff.col_idx = hmm_diff.col_idx.astype(int)
+	
+	hmm_diff = hmm_diff.apply(lambda x: np.array([int(x[0]), hmm.means_[1,x[0]] - hmm.means_[0,x[0]]]), axis=1)
+	hmm_diff = pd.DataFrame(hmm_diff)
+	
+	print 'Top {} differences between State 1 and State 0'.format(to_show)
+	print
+	return hmm_diff.sort_values(diff_colname, ascending=show_neg).iloc[0:to_show]
 
-        print 'Comparison for variable: {}'.format(col.upper())
-        for i in range(K):
-            print 'State {} HMM {} mean: {} (sd={}) [HMM param. mean: {}]'.format(i, col, 
-                                                                                 round(states[i].mean(), 3), 
-                                                                                 round(states[i].std(), 3),
-                                                                                 round(hmm_means[i],3))
-        print
-        print 't = {}, p = {}'.format(test.statistic,test.pvalue)
-        print
-        print
-        
-        # we assign "target_state" as the state for which HMM estimated LabMT_happs mean is lower (sadder)
-        if col == 'LabMT_happs':
-            if hmm_means[state] < hmm_means[antistate]:
-                target_state = state
-            else:
-                target_state = antistate
-                
-    return target_state
+
+def compare_hmm_means(hmm, hmmdf, cols, state=0, decision=0.5, K=2, reporting=True):
+	''' T-tests to determine if State1 and State0 means are different for obs. assigned to each state by HMM 
+		Kwargs: state -> which HMM state number to split on, decision -> cut point for state membership '''
+	
+	colnames = np.array([x[0] for x in cols]) # gets predictor names for np.where comparison later
+	antistate = int(np.logical_not(state)) # sets int value for the other state in 2-state HMM (compared to 'state' arg)
+	ct = {0:0,1:0} # for keeping track of which state is more in line with logistic regression coefficients
+	
+	for col, sway in cols:
+		
+		var_idx = np.where(colnames==col)[0][0]
+		impact = 'larger' if sway > 0 else 'smaller'
+		state_col = 'proba{}'.format(state)
+		masked_var = {}
+		state_likely = hmmdf[state_col] >= decision
+		masked_var[state] = hmmdf[col][ state_likely ] # observations probably in state (default state = 0)
+		masked_var[antistate] = hmmdf[col][ ~state_likely ] # observations probably in antistate (default = 1)
+
+		try:
+			
+			hmm_means = {0:hmm.means_[0,var_idx],
+						 1:hmm.means_[1,var_idx]}
+
+			test = ttest(masked_var[state], masked_var[antistate])
+
+			if reporting:
+				print 'Comparison for variable: {}'.format(col.upper())
+				for i in range(K):
+					print 'State {} HMM {} mean: {} (sd={}) [HMM param. mean: {}]'.format(i, col, 
+																						 round(masked_var[i].mean(), 3), 
+																						 round(masked_var[i].std(), 3),
+																						 round(hmm_means[i],3))
+				print
+				print 't = {}, p = {}'.format(test.statistic,test.pvalue)
+				print
+				print 'According to logistic regression, this variable should be {} for depressed class.'.format(impact.upper())
+				print
+			diff = hmm_means[state].mean() - hmm_means[antistate].mean()
+			if (diff < 1) and (sway < 0):
+				ct[state] += 1
+			else:
+				ct[antistate] += 1
+		except Exception, e:
+			print 'Comparison of {} failed: {}'.format(col, str(e))
+			
+	# we assign "target_state" as the state which is most in agreement with logistic regression output
+	if ct[state] > ct[antistate]:
+		target_state = state
+	else:
+		target_state = antistate
+	
+	print 'state=0 agree ct: {}, state=1 agree ct: {}'.format(ct[state],ct[antistate])
+	return target_state
 
 
 def prepare_hmm_plot_data(hmmdf, hmm_master, target_state, klass, roll=90, doPrint=False):
-    
-    key_var = 'proba{}'.format(target_state)
-    roll = 90
-    
-    ct = 0
-    color_ct = 0
-    uct = 0
-    last_uid = ''
-    
-    hmm_master[klass] = pd.DataFrame()
+	
+	key_var = 'proba{}'.format(target_state)
+	roll = 90
+	
+	ct = 0
+	color_ct = 0
+	uct = 0
+	last_uid = ''
+	
+	hmm_master[klass] = pd.DataFrame()
 
-    for idx in hmmdf.ix[hmmdf.target==klass,:].index:
+	for idx in hmmdf.ix[hmmdf.target==klass,:].index:
 
-        uid = hmmdf.ix[idx,'user_id']
-        
-        if uid != last_uid:
-            ct += 1
-            last_uid = uid
-            current = pd.to_datetime('2016-01-01')
-            
-            diag = pd.to_datetime(hmmdf.ix[idx,'diag_date'])
-            hmm_oneuser = hmmdf.ix[hmmdf.user_id==uid, :].copy()
+		uid = hmmdf.ix[idx,'user_id']
+		
+		if uid != last_uid:
+			ct += 1
+			last_uid = uid
+			current = pd.to_datetime('2016-01-01')
+			
+			diag = pd.to_datetime(hmmdf.ix[idx,'diag_date'])
+			hmm_oneuser = hmmdf.ix[hmmdf.user_id==uid, :].copy()
 
-            if klass == 1:
-                ts = hmm_oneuser.ix[:,[key_var,'from_diag']].copy()
-                ts.index = pd.to_datetime(hmm_oneuser.created_date)
-                ts['from_point'] = ts.from_diag
-                mask = (ts.index > diag-pd.DateOffset(365)) & (ts.index < diag+pd.DateOffset(365))
-            else:
-                ts = hmm_oneuser.ix[:,[key_var,'created_date','LabMT_happs']].copy()
-                ts.index = pd.to_datetime(hmm_oneuser.created_date)
-                ts['from_point'] = (ts.index-current).days
-                mask = (ts.from_point > -365*2)
+			if klass == 1:
+				ts = hmm_oneuser.ix[:,[key_var,'from_diag']].copy()
+				ts.index = pd.to_datetime(hmm_oneuser.created_date)
+				ts['from_point'] = ts.from_diag
+				mask = (ts.index > diag-pd.DateOffset(365)) & (ts.index < diag+pd.DateOffset(365))
+			else:
+				ts = hmm_oneuser.ix[:,[key_var,'created_date','LabMT_happs']].copy()
+				ts.index = pd.to_datetime(hmm_oneuser.created_date)
+				ts['from_point'] = (ts.index-current).days
+				mask = (ts.from_point > -365*2)
  
-            ts['rmean'] = ts[key_var].rolling(roll).mean()
-            ts2 = ts.loc[mask]
-        
-            if klass == 0:
-                ts2.from_point = ts2.from_point + 365
-                
-            hmm_master[klass] = pd.concat([hmm_master[klass],ts2])
+			ts['rmean'] = ts[key_var].rolling(roll).mean()
+			ts2 = ts.loc[mask]
+		
+			if klass == 0:
+				ts2.from_point = ts2.from_point + 365
+				
+			hmm_master[klass] = pd.concat([hmm_master[klass],ts2])
 
-    if doPrint:
-        hmm_master[klass][key_var].describe()
+	if doPrint:
+		hmm_master[klass][key_var].describe()
 
 
 
