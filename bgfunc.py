@@ -28,6 +28,9 @@ from sklearn.svm import SVC
 from sklearn.metrics import confusion_matrix
 from sklearn.metrics import roc_curve, auc, f1_score, precision_score, recall_score, mean_squared_error
 from sklearn.decomposition import PCA
+from sklearn import mixture
+from pykalman import KalmanFilter
+from hmmlearn.hmm import GaussianHMM
 
 import scipy.stats as stats
 from scipy import linalg
@@ -40,6 +43,9 @@ import statsmodels.api as sm
 from statsmodels.sandbox.stats.multicomp import multipletests
 import statsmodels.api as sm
 import statsmodels.tools.tools as smtools
+
+import warnings
+warnings.simplefilter("ignore")
 
 from labMTsimple.speedy import *
 
@@ -270,10 +276,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 				},
 				'tw':{
 					'weekly':{ 
-						'means':['total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'means':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -290,10 +294,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'no_addtl_means':['total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'no_addtl_means':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -310,10 +312,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'model':['total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'model':['LIWC_happs', 'LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -330,10 +330,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'full':	['tweet_id', 'user_id', 'total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'full':	['tweet_id', 'user_id','LIWC_happs', 'LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -351,10 +349,9 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
 								   'created_date','diag_date'],
-						'no_addtl_full': ['tweet_id', 'user_id', 'total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'no_addtl_full': ['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -376,7 +373,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 					'user_id':{
 						'means':['LIWC_happs', 'LabMT_happs',
 								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -395,7 +392,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'is_rt', 'is_reply'],
 						'no_addtl_means':['LIWC_happs', 'LabMT_happs',
 								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -434,7 +431,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'full':	['tweet_id', 'user_id', 
 								   'LIWC_happs', 'LabMT_happs',
 								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -454,7 +451,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'no_addtl_full':	['tweet_id', 'user_id', 
 								   'LIWC_happs', 'LabMT_happs',
 								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -473,9 +470,9 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'is_rt', 'is_reply', 'target']
 						},
 					'created_date':{
-						'means':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'means':['LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -492,9 +489,9 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'no_addtl_means':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'no_addtl_means':['LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -511,9 +508,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'model':['total_words','LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'model':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -530,10 +526,9 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
 								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply'],
-						'full':	['tweet_id', 'user_id', 'total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'full':	['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -551,10 +546,9 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
 								   'is_rt', 'is_reply', 'target','from_diag','from_susp','before_diag','before_susp',
 								   'created_date','diag_date'],
-						'no_addtl_full':	['tweet_id', 'user_id', 'total_words',
-								   'LIWC_num_words', 'LIWC_happs', 'LabMT_num_words', 'LabMT_happs',
-								   'ANEW_num_words', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_total_count', 'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
+						'no_addtl_full':['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
+								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
 								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
 								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
 								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
@@ -694,31 +688,45 @@ def report_share_sm_disq(fname):
 	''' Reports on the # of subjects disqualified because they refused to share social media data '''
 
 	d = pd.read_csv(fname).drop(0,0) # first row of qualtrics data is extra header info
-	print 'Total attempted:', d.shape[0]
-	print 'Disqualified for share_sm:', np.sum(d.share_sm=='No')
-	print '% disq for share_sm:', np.sum(d.share_sm=='No')/float(d.shape[0])
+	disq = d.share_sm.str.startswith('No')
+	attempted = d.shape[0]
+	disqualified = np.sum(disq)
+	print 'Total attempted:', attempted
+	print 'Disqualified for share_sm:', disqualified
+	print '% disq for share_sm:', disqualified/float(attempted)
+	return attempted, disqualified
 
 
-def urls_per_user(data):
-# avg num urls rated per user 
+def urls_per_user(data, local_params):
+	''' avg num urls rated per user '''
 
-	targ_url_ct = data['target']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
-	control_url_ct = data['control']['all'].groupby(['username','url']).count().reset_index().groupby('username').count()['url']
+	locus = local_params['locus']
+	user_unit = local_params['user']
+	post_unit = local_params['post']
+
+	targ_url_ct = data['target'][locus].groupby([user_unit,post_unit]).count().reset_index().groupby(user_unit).count()[post_unit]
+	control_url_ct = data['control'][locus].groupby([user_unit,post_unit]).count().reset_index().groupby(user_unit).count()[post_unit]
 	all_url_ct = pd.concat([targ_url_ct,control_url_ct])
 	return targ_url_ct, control_url_ct, all_url_ct
 
-def urls_rated_by_pop(data):
-	c = data['control']['ratings'].url.unique().shape[0]
-	t = data['target']['ratings'].url.unique().shape[0]
+def urls_rated_by_pop(data, local_params):
+
+	post_unit = local_params['post']
+
+	c = data['control']['ratings'][post_unit].unique().shape[0]
+	t = data['target']['ratings'][post_unit].unique().shape[0]
 	return (c,t)
 
-def subj_data_by_pop(data, target, platform, conn):
-	
+def subj_data_by_pop(data, target, platform, local_params, conn):
+
+	locus = local_params['locus']
+	user_unit = local_params['user']
+
 	output = {'control':{},'target':{}}
 	popdata = {}
 
-	popdata['control'] = pd.Series(data['control']['all'].username.unique())
-	popdata['target'] = pd.Series(data['target']['all'].username.unique())
+	popdata['control'] = pd.Series(data['control'][locus][user_unit].unique())
+	popdata['target'] = pd.Series(data['target'][locus][user_unit].unique())
 
 	output['control']['ct'] = popdata['control'].shape[0]
 	output['target']['ct'] = popdata['target'].shape[0]
@@ -727,17 +735,22 @@ def subj_data_by_pop(data, target, platform, conn):
 		tup = tuple(popdata[pop].astype(str).values)
 
 		if pop == 'control':
-			q = 'select username, year_born, gender from control where {}="No" and username in {}'.format(target,tup)
+			q = 'select {uunit}, year_born, gender from control where {cond}="No" and {uunit} in {uset}'.format(uunit=user_unit,
+																												cond=target,
+																												uset=tup)
 			d = pd.read_sql_query(q,conn)
-			d.drop_duplicates(subset=['username'], inplace=True)
+			d.drop_duplicates(subset=[user_unit], inplace=True)
 
 			output['control']['femprop'] = round(np.sum(d.gender=="Female")/float(d.shape[0]),2)
 			output['control']['perc_diag_within_13_15'] = None
 
 		elif pop == 'target':
-			q = 'select username, year_born, diag_date from {} where platform="{}" and username in {}'.format(target,platform,tup)
+			q = 'select {uunit}, year_born, diag_date from {cond} where platform="{pl}" and {uunit} in {uset}'.format(cond=target,
+																													  pl=platform,
+																													  uunit=user_unit,
+																													  uset=tup)
 			d = pd.read_sql_query(q,conn)
-			d.drop_duplicates(subset=['username'], inplace=True)
+			d.drop_duplicates(subset=[user_unit], inplace=True)
 			output['target']['femprop'] = None
 
 			ts = pd.to_datetime(d.diag_date)
@@ -755,16 +768,25 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 		Also includes stats broken down by target/control pop.
 		Meant for printing, but also returns data from function call '''
 
-	pop_data = subj_data_by_pop(data,target,platform,conn)
-	ct = {}
-	ct['target'], ct['control'], url_ct = urls_per_user(data)
+	if platform == 'twitter':
+		local_params = {'locus':'tweets', 'post':'id', 'user':'username'}
+	elif platform == 'instagram':
+		local_params = {'locus':'all', 'post':'url', 'user':'username'}
 
-	if additional_data:
-		urls_rated_c, urls_rated_t = urls_rated_by_pop(data)
+	pop_data = subj_data_by_pop(data,target,platform,local_params,conn)
+
+	ct = {}
+
+	ct['target'], ct['control'], post_ct = urls_per_user(data,local_params)
+
+	if additional_data: # instagram only
+		urls_rated_c, urls_rated_t = urls_rated_by_pop(data,local_params)
 	
 	if doPrint:
-		print 'Mean posts per participant:', round(url_ct.mean(),2), '(SD={})'.format(round(url_ct.std(),2))
-		print 'Median posts per participant:', round(url_ct.median(),2)
+		print 'Total posts across all groups:', data['target'][local_params['locus']].shape[0] + data['control'][local_params['locus']].shape[0]
+		print 'Mean posts per participant:', round(post_ct.mean(),2), '(SD={})'.format(round(post_ct.std(),2))
+		print 'Median posts per participant:', round(post_ct.median(),2)
+		
 		if additional_data:
 			print 'Photos rated: TARGET population ::', urls_rated_t
 			print 'Photos rated: CONTROL population ::', urls_rated_c
@@ -773,11 +795,14 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 		for pop in ['target','control']:
 			print 'POPULATION: {}'.format(pop.upper())
 			print 'Total participants analyzed:', pop_data[pop]['ct']
+			print 'Total posts:', data[pop][local_params['locus']].shape[0]
 			print 'Mean posts per participant:', round(ct[pop].mean(),2), '(SD={})'.format(round(ct[pop].std(),2))
 			print 'Median posts per participant:', round(ct[pop].median(),2)
 			if pop == 'control': 
 				print 'Proportion female (control only):', pop_data[pop]['femprop']
 			if pop == 'target': 
+				print 'Earliest date of first diagnosis:', pd.to_datetime(data[pop][local_params['locus']].diag_date).describe()['first']
+				print 'Latest date of first diagnosis:', pd.to_datetime(data[pop][local_params['locus']].diag_date).describe()['last']
 				print 'Proportion diagnosed between 2013-2015 (target only):', pop_data[pop]['perc_diag_within_13_15']
 			print 'Average age:', pop_data[pop]['age']['mean'], '(SD={})'.format(pop_data[pop]['age']['std'])
 			print 'Min age:', pop_data[pop]['age']['min']
@@ -785,14 +810,14 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 			print
 			print
 
-	output = {'pop_data':pop_data, 'url_ct':url_ct}
+	output = {'pop_data':pop_data, 'post_ct':post_ct}
 
-	if additional_data:
+	if additional_data: # instagram only
 		output['urls_rated'] = {'c':urls_rated_c,'t':urls_rated_t}
 		
-	output['url_ct'].plot(kind='hist', 
+	output['post_ct'].plot(kind='hist', 
 						  bins=50, 
-						  title='Instagram posts per participant, {} (target + control)'.format(target))
+						  title='{} posts per participant, {} (target + control)'.format(platform.upper(),target))
 	plt.show()
 
 	if return_output:
@@ -965,7 +990,8 @@ def get_additional_data(data, params, platform, condition, pop, pop_long,
 
 def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 	''' Cuts all data from participants with a low number of posts.
-		'Low' is defined as fewer than (mean_posts_within_pop - 0.5*std_posts_within_pop) '''
+		'Low' is defined as fewer than (mean_posts_within_pop - 0.5*std_posts_within_pop) 
+		WARNING: Does not work for Twitter data as-is!!   '''
 
 	df = data[pop_long]['all']
 	d = (df.groupby(['user_id','url'])
@@ -1019,6 +1045,7 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		
 			for period in periods:
 				for turn_point in turn_points:
+					turn_point = turn_point.replace("-","_") # because of the weird -/_ switch you did in Twitter
 					# aggregate data by groupby types (url, username, created_date)
 					make_groupby(data[pop_long][period][turn_point], platform, pop_long, params, gb_types, 
 								 conn, condition, additional_data, period = period, turn_point=turn_point)  
@@ -1264,8 +1291,6 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=Fa
 		fix_from_counts(all_tweets)
 		tweets = all_tweets.copy()
 	
-
-	
 	if doPrint:
 		print 'Num tweets in {}, before dropping duplicates:'.format(pop_long.upper()), tweets.shape[0]
 		print 'Num tweets in {}, after dropping duplicates:'.format(pop_long.upper()), data[pop_long][key].shape[0]
@@ -1493,7 +1518,7 @@ def make_groupby(df, m, pop, params, gb_types,
 			a few of the features (has_url, is_rt, is_reply) from the basic groupby. You could have just put those fields
 			in the word_features table, but you decided not to because they are not really word features.'''
 
-		if gb_type == 'post':
+		if gb_type == 'post': # (instagram-only)
 			gb_list = ['username', post_unit]
 			to_group_df = df[base] # for instagram, this is the 'outermost' groupby we do, on original df
 
@@ -1501,17 +1526,17 @@ def make_groupby(df, m, pop, params, gb_types,
 			gb_list = ['username', 'created_date']
 			to_group_df = df['gb'][grouped] # this groupby is acting on the gb-url aggregate df
 
+		elif (gb_type == 'username') and (m=='ig'):
+			gb_list = ['username']
+			to_group_df = df['gb'][username_gb] # this groupby is acting on the gb-created_date aggregate df
+
 		elif (gb_type == 'created_date') and (m=='tw'):
 			gb_list = ['user_id', 'created_date']
 			to_group_df = df[base] # this groupby is acting on the gb-url aggregate df
 
-		elif gb_type == 'weekly': # for tweets only
+		elif gb_type == 'weekly': # (twitter only)
 			gb_list = ['user_id', pd.Grouper(key='created_date',freq='W')]
 			to_group_df = df[base] # this groupby is acting on the gb-url aggregate df
-
-		elif (gb_type == 'username') and (m=='ig'):
-			gb_list = ['username']
-			to_group_df = df['gb'][username_gb] # this groupby is acting on the gb-created_date aggregate df
 
 		elif (gb_type == 'user_id') and (m=='tw'):
 			gb_list = ['user_id']
@@ -1839,13 +1864,17 @@ def cleanX(X, doPrint=False):
 	X.drop(to_drop,1,inplace=True)
 
 
-def pca_explore(pca, X, best_pca_num_comp):
+def pca_explore(pca, X, unit, best_pca_num_comp, show_plot=False):
 	''' Shows variance accounted for by principal components '''
 
 	already_optimized = best_pca_num_comp
 	X_reduced = pca.fit_transform(scale(X))
+	n_comp = best_pca_num_comp
 
-	if not already_optimized:
+	if (not already_optimized):
+		show_plot = True
+
+	if show_plot:
 		print 'Total vars:', X.shape[1]
 		print 'Num components selected by Minka MLE:', pca.components_.shape[0]
 		
@@ -1856,13 +1885,12 @@ def pca_explore(pca, X, best_pca_num_comp):
 		plt.figure()
 		plt.plot(cumvar)
 		_=plt.ylim([0,100])
+		plt.title('PCA: Variance explained per additional component ({})'.format(unit))
 		plt.show()
 
-		n_comp = pca.n_components_
-
-	else:
-		n_comp = best_pca_num_comp
-
+		if (not already_optimized):
+			n_comp = pca.n_components_
+		
 	return X_reduced, n_comp
 
 
@@ -1884,10 +1912,7 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	for i in np.arange(1,num_pca_comp+1):
 		print 'pca comp #:', i
 		score = cross_validation.cross_val_score(lr, X_reduced[:,:i], y.ravel(), cv=kf_10, scoring='f1').mean()
-		f1.append(score)
-
-	#testing
-	print 'after pca cv loop'    
+		f1.append(score) 
 
 	new_num_pca_comp = np.argmax(np.array(f1)) + 1 # redefine num components based on max F1 score
 	print 'Num pca comp displayed:', num_pca_comp
@@ -1911,7 +1936,7 @@ def pca_model(pca, X_reduced, y, num_pca_comp):
 	return new_num_pca_comp
 
 
-def pca_report(fit, feats, N_comp=5, N_elem=10):
+def pca_report(fit, feats, N_comp=3, N_elem=10):
 	''' Prints N_elem components loadings for the top N_comp components.
 		Three separate printouts are made, each is sorted with the highest N_elem loading variables per component on top
 	'''
@@ -1952,6 +1977,7 @@ def update_acc_metrics(fit, X_test, y_test, cv_iters, acc_avg):
 								 average=acc_avg), 3))
 	return probas_
 	
+
 def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None):
 	''' Plots ROC curve '''
 	
@@ -1974,6 +2000,8 @@ def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None):
 	
 	
 def initialize_model_fits(fits, kernel, rfp):
+	''' Initializes machine learning model objects with specified hyperparameters '''
+
 	fits['lr'] = {'name':'Logistic Regression','clf':logregcv(class_weight='auto')}
 	fits['svc'] = {'name':'Support Vector Machine','clf':SVC(class_weight='auto', kernel=kernel, probability=True)}
 	fits['rf'] = {'name':'Random Forests','clf':RFC(n_estimators=rfp['n_est'], 
@@ -1991,7 +2019,8 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 						'pred_0':'pred_control',
 						'pred_1':'pred_target'}):
 
-	''' NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec.) '''
+	''' Makes, fits, and reports on machine learning models.  The ML workhorse in this script.
+		NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec.) '''
 
 	mdata = d['data']
 	title = d['name']
@@ -2015,7 +2044,7 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 		# stackoverflow.com/questions/22984335/recovering-features-names-of-explained-variance-ration-in-pca-with-sklearn
 		
 		pca = PCA(n_components='mle')
-		X_reduced, num_pca_comp = pca_explore(pca, X, d['best_pca_num_comp'])
+		X_reduced, num_pca_comp = pca_explore(pca, X, unit, d['best_pca_num_comp'], d['show_pca_comp_plot'])
 		
 		# IMPORTANT! Only need to run pca_model2 once to determine best num_pca_comp. Takes awhile to run (~20 min for tw).
 		if d['best_pca_num_comp'] is None:
@@ -2083,28 +2112,25 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 		total_neg = np.sum(y_test==0)
 		prop_neg = round((total_neg)/float(total_obs),3)
 
-		if prop_neg > 0.5:
-			pos_label = 0
-		else:
-			pos_label = 1
-
-
 		output = {}
 		output['X_test'] = X_test
 		output['y_test'] = y_test
 
 		output[ctype] = fits[ctype]['clf']
 
-		
 		if ctype == 'rf':
 			importance_wrapper(fits, ctype, model_feats, title, d['tall_plot'], d['rf_params']['imp_cutoff'])
 	
 		output[ctype] = fits[ctype]['clf']
 
 		actualpos = np.sum(output['y_test'])
-		prevalence = actualpos / float(output['X_test'].shape[0])
+		prevalence = actualpos / float(output['y_test'].shape[0])
 
-		#print_model_summary(fits[ctype], ctype, target, title, X_test, y_test, labels, average=acc_avg, pos_label=pos_label)
+		print 'actualpos:', actualpos
+		print 'total y_test:', output['y_test'].shape[0]
+		print 'prevalence:', prevalence 
+		print 
+		#print_model_summary(fits[ctype], ctype, target, title, X_test, y_test, labels, average=acc_avg)
 
 		out_of_100(prevalence, master_results['precision'][0], master_results['specificity'][0], master_results['recall'][0])
 	
@@ -2284,16 +2310,17 @@ def logreg_wrapper(master, gb_type, varset, additional_data, target='target'):
 	logreg_output(design_matrix, response)
 
 
-def save_master_to_file(additional_data, posting_cutoff, use_pca, gb_type, report, condition, m, save_df):
+def save_master_to_file(additional_data, posting_cutoff, use_pca, pca_num_comp, gb_type, report, condition, m, save_df):
 	''' save csv of master data for target-type // groupby-type '''
 
 	addtl = 'addtl-data' if additional_data else 'no-addtl-data'
 	postcut = 'post-cut' if posting_cutoff else 'post-uncut'
-	pca_status = 'pca' if use_pca else 'no-pca'
-	gbt = gb_type.replace('_','-')
-	subset = report.replace('_','-')
+	pca_status = 'pca-{}'.format(pca_num_comp) if use_pca else 'no-pca'
 	fpath = '/'.join(['data-files',condition,m,gb_type])
-	fname = '_'.join([condition,m,gbt,subset,postcut,pca_status])
+	if m == 'tw':
+		fname = '_'.join([condition,m,gb_type,report,pca_status])
+	elif m == 'ig':
+		fname = '_'.join([condition,m,gb_typet,report,postcut,pca_status])
 	csv_name = '{}/{}.csv'.format(fpath,fname)
 	save_df.to_csv(csv_name, encoding='utf-8', index=False)
 
@@ -2341,6 +2368,7 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 					'test_size':.3, # test split for train/test
 					'acc_avg':'binary',
 					'best_pca_num_comp':aparams['best_pca'], # opt: 69 for tw-MAIN-created_date, but 2 works also!
+					'show_pca_comp_plot':aparams['show_pca_comp_plot'],
 					'kernel':'rbf', # for SVC, not used anymore
 					'tall_plot':aparams['tall_plot'],
 					'acc_avg':aparams['acc_avg'],
@@ -2364,9 +2392,13 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 	if aparams['save_to_file']:
 		if use_pca:
 			save_df = pca_df
+			pca_ct = action_params['best_pca']+1
 		else:
 			save_df = master[gb_type]
-		save_master_to_file(additional_data, posting_cutoff, use_pca, gb_type, report, condition, m, save_df)
+			pca_ct = None
+
+		save_master_to_file(additional_data, posting_cutoff, use_pca, pca_ct, 
+							gb_type, report, condition, m, save_df)
 
 	if aparams['nhst'] and aparams['use_ttest']:
 		print
@@ -2882,6 +2914,144 @@ def optimize_rf_hyperparams(X, y):
 						ct += 1
 
 	return master_results, best_f1
+
+
+def fit_hmm(df, preds, K=2, show_hist=True,
+            sort_cols=['user_id','created_date'], gb_col='user_id', ct_col='target'):
+    ''' Fits K-state Hidden Markov Model on sorted data, returns class probabilities'''
+    
+    # sort data by user and then by posting chronology
+    hmmdf = df.sort_values(sort_cols).copy()
+
+    # HMM needs to know how many posts are in the chronology for each user
+    # NB: ct_col here is not special, we can use any column that count() turns into a count vector.
+    lengths = hmmdf.groupby(gb_col).count()[ct_col].values
+    
+    # see Working with Multiple Sequences for more on the lengths argument
+    # http://hmmlearn.readthedocs.io/en/latest/tutorial.html#training-hmm-parameters-and-inferring-the-hidden-states
+    hmm = GaussianHMM(n_components=K).fit( hmmdf[preds], lengths )
+
+    probas = hmm.predict_proba( hmmdf[preds] )
+    
+    for i in range(K):
+        hmmdf['proba{}'.format(i)] = probas[:,i]
+
+    if show_hist:
+        which_prob = 1
+        plt.figure(figsize=(6,3))
+        _=plt.hist(probas[:,which_prob], bins=100)
+        plt.yscale('log')
+        plt.title('Probability histogram for class {}'.format(which_prob))
+        
+    return hmm, hmmdf.reset_index(drop=True)
+
+
+def show_class_diffs(hmm, hmmdf, predictors, to_show=10, show_neg=True):
+    ''' Shows difference of parameter means between HMM State 1 and State 2.  For 2-state HMM only. 
+        Note: State 0 for a given fit may be State 1 for a subsequent fit! '''
+
+    # the zeros column is a placeholder for State1-State2, which you create using apply() 
+    hmm_diff = pd.DataFrame(np.array([xrange(hmmdf[predictors].columns.shape[0]), 
+                                      np.zeros(hmmdf[predictors].shape[1])]    ).T, 
+                            index = hmmdf[predictors].columns, 
+                            columns = ['col_idx','State1-State2'])
+    hmm_diff.col_idx = hmm_diff.col_idx.astype(int)
+    hmm_diff = hmm_diff.apply(lambda x: np.array([int(x[0]), hmm.means_[1,x[0]] - hmm.means_[0,x[0]]]), axis=1)
+    hmm_diff = pd.DataFrame(hmm_diff)
+    
+    print 'Top {} cases where State 1 < State 2'.format(to_show)
+    print
+    return hmm_diff.sort_values('State1-State2', ascending=show_neg).iloc[0:to_show]
+
+
+def compare_hmm_means(hmm, hmmdf, cols=['LabMT_happs'], state=0, decision=0.5, K=2):
+    ''' T-tests to determine if State1 and State0 means are different for obs. assigned to each state by HMM 
+        Kwargs: state -> which HMM state number to split on, decision -> cut point for state membership '''
+    
+    antistate = int(np.logical_not(state))
+    
+    for col in cols:
+        var_idx = np.where(hmmdf.columns==col)[0][0]
+        
+        state_col = 'proba{}'.format(state)
+        states = {}
+        state_likely = hmmdf[state_col] >= 0.5
+        states[state] = hmmdf[col][ state_likely ] # observations probably in state 0
+        states[antistate] = hmmdf[col][ ~state_likely ] # observations probably in state 1
+
+        hmm_means = {0:hmm.means_[0,var_idx],
+                     1:hmm.means_[1,var_idx]}
+
+        test = ttest(states[state], states[antistate])
+
+        print 'Comparison for variable: {}'.format(col.upper())
+        for i in range(K):
+            print 'State {} HMM {} mean: {} (sd={}) [HMM param. mean: {}]'.format(i, col, 
+                                                                                 round(states[i].mean(), 3), 
+                                                                                 round(states[i].std(), 3),
+                                                                                 round(hmm_means[i],3))
+        print
+        print 't = {}, p = {}'.format(test.statistic,test.pvalue)
+        print
+        print
+        
+        # we assign "target_state" as the state for which HMM estimated LabMT_happs mean is lower (sadder)
+        if col == 'LabMT_happs':
+            if hmm_means[state] < hmm_means[antistate]:
+                target_state = state
+            else:
+                target_state = antistate
+                
+    return target_state
+
+
+def prepare_hmm_plot_data(hmmdf, hmm_master, target_state, klass, roll=90, doPrint=False):
+    
+    key_var = 'proba{}'.format(target_state)
+    roll = 90
+    
+    ct = 0
+    color_ct = 0
+    uct = 0
+    last_uid = ''
+    
+    hmm_master[klass] = pd.DataFrame()
+
+    for idx in hmmdf.ix[hmmdf.target==klass,:].index:
+
+        uid = hmmdf.ix[idx,'user_id']
+        
+        if uid != last_uid:
+            ct += 1
+            last_uid = uid
+            current = pd.to_datetime('2016-01-01')
+            
+            diag = pd.to_datetime(hmmdf.ix[idx,'diag_date'])
+            hmm_oneuser = hmmdf.ix[hmmdf.user_id==uid, :].copy()
+
+            if klass == 1:
+                ts = hmm_oneuser.ix[:,[key_var,'from_diag']].copy()
+                ts.index = pd.to_datetime(hmm_oneuser.created_date)
+                ts['from_point'] = ts.from_diag
+                mask = (ts.index > diag-pd.DateOffset(365)) & (ts.index < diag+pd.DateOffset(365))
+            else:
+                ts = hmm_oneuser.ix[:,[key_var,'created_date','LabMT_happs']].copy()
+                ts.index = pd.to_datetime(hmm_oneuser.created_date)
+                ts['from_point'] = (ts.index-current).days
+                mask = (ts.from_point > -365*2)
+ 
+            ts['rmean'] = ts[key_var].rolling(roll).mean()
+            ts2 = ts.loc[mask]
+        
+            if klass == 0:
+                ts2.from_point = ts2.from_point + 365
+                
+            hmm_master[klass] = pd.concat([hmm_master[klass],ts2])
+
+    if doPrint:
+        hmm_master[klass][key_var].describe()
+
+
 
 ''' OLD REUSABLE CODE
 
