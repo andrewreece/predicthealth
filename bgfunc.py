@@ -124,6 +124,11 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 	else:
 		cutoff_clause = ""
 
+	# a number of LIWC labels are linearly dependent on their hierarchical sub-categories. just use these ones.
+	LIWC_vars = ['LIWC_{}'.format(v) for v in ['i','we','you','shehe','they','ipron','article','verb','negate',
+											   'swear','social','posemo','anx','anger','sad','cogmech','percept',
+											   'body','health','sexual','ingest','relativ','work','achieve',
+											   'leisure','home','money','relig','death','assent']]
 	params = {
 			'q': {
 				't': {
@@ -276,296 +281,50 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 				},
 				'tw':{
 					'weekly':{ 
-						'means':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'no_addtl_means':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'model':['LIWC_happs', 'LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'full':	['tweet_id', 'user_id','LIWC_happs', 'LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
-								   'created_date','diag_date'],
-						'no_addtl_full': ['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','before_diag','before_susp',
-								   'created_date','diag_date']
+						'means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply','LIWC_happs'] + LIWC_vars,
+						'no_addtl_means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+										  'is_rt', 'is_reply','tweet_count', 'word_count', 
+										  'has_url', 'LIWC_happs'] + LIWC_vars,
+						'model':['LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'full':	['tweet_id', 'user_id', 'LabMT_happs','ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
+								   'before_diag','before_susp', 'created_date','diag_date','LIWC_happs'] + LIWC_vars,
+						'no_addtl_full': ['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+										  'time_unit', 'tweet_count', 'word_count', 'has_url',
+										  'is_rt', 'is_reply', 'target','before_diag','before_susp',
+										  'created_date','diag_date', 'LIWC_happs'] + LIWC_vars
 						},
 					'user_id':{
-						'means':['LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'no_addtl_means':['LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'model':['LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'full':	['tweet_id', 'user_id', 
-								   'LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target'],
-						'no_addtl_full':	['tweet_id', 'user_id', 
-								   'LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target']
+						'means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance', 'tweet_count', 'word_count', 
+								 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'no_addtl_means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance', 'tweet_count', 'word_count', 
+								 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'model':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance', 
+								   'word_count', 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'full':	['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'time_unit', 'tweet_count', 'word_count', 'has_url', 
+								   'is_rt', 'is_reply', 'target', 'LIWC_happs'] + LIWC_vars,
+						'no_addtl_full': ['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+										  'time_unit', 'tweet_count', 'word_count', 'has_url', 
+										  'is_rt', 'is_reply', 'target', 'LIWC_happs'] + LIWC_vars
 						},
 					'created_date':{
-						'means':['LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'no_addtl_means':['LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'model':['LIWC_happs', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply'],
-						'full':	['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','from_diag','from_susp','before_diag','before_susp',
-								   'created_date','diag_date'],
-						'no_addtl_full':['tweet_id', 'user_id', 'LIWC_happs', 'LabMT_happs',
-								   'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								   'LIWC_funct', 'LIWC_pronoun', 'LIWC_ppron',
-								   'LIWC_i', 'LIWC_we', 'LIWC_you', 'LIWC_shehe', 'LIWC_they',
-								   'LIWC_ipron', 'LIWC_article', 'LIWC_verb', 'LIWC_auxverb',
-								   'LIWC_past', 'LIWC_present', 'LIWC_future', 'LIWC_adverb',
-								   'LIWC_preps', 'LIWC_conj', 'LIWC_negate', 'LIWC_quant',
-								   'LIWC_number', 'LIWC_swear', 'LIWC_social', 'LIWC_family',
-								   'LIWC_friend', 'LIWC_humans', 'LIWC_affect', 'LIWC_posemo',
-								   'LIWC_negemo', 'LIWC_anx', 'LIWC_anger', 'LIWC_sad', 'LIWC_cogmech',
-								   'LIWC_insight', 'LIWC_cause', 'LIWC_discrep', 'LIWC_tentat',
-								   'LIWC_certain', 'LIWC_inhib', 'LIWC_incl', 'LIWC_excl',
-								   'LIWC_percept', 'LIWC_see', 'LIWC_hear', 'LIWC_feel', 'LIWC_bio',
-								   'LIWC_body', 'LIWC_health', 'LIWC_sexual', 'LIWC_ingest',
-								   'LIWC_relativ', 'LIWC_motion', 'LIWC_space', 'LIWC_time',
-								   'LIWC_work', 'LIWC_achieve', 'LIWC_leisure', 'LIWC_home',
-								   'LIWC_money', 'LIWC_relig', 'LIWC_death', 'LIWC_assent',
-								   'LIWC_nonfl', 'time_unit', 'tweet_count', 'word_count', 'has_url',
-								   'is_rt', 'is_reply', 'target','from_diag','from_susp','before_diag','before_susp',
-								   'created_date','diag_date']
+						'means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'no_addtl_means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								   'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
+						'model':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply''LIWC_happs'] + LIWC_vars,
+						'full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
+								 'from_diag','from_susp','before_diag','before_susp', 
+								 'created_date','diag_date', 'LIWC_happs'] + LIWC_vars,
+						'no_addtl_full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
+								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
+								 'from_diag','from_susp','before_diag','before_susp', 
+								 'created_date','diag_date', 'LIWC_happs'] + LIWC_vars,
 						}
 				}
 					
@@ -2275,39 +2034,67 @@ def compare_filters(data, conn, level, gb_type, show_figs=True):
 	return filts 
 
 
-def logreg_output(dm, resp):
+def logreg_output(dm, resp, preds, doPrint=True, maxiter=100):
 	''' Performs frequentist logistic regression, prints model stats, returns log odds '''
 	
 	logit = sm.Logit(resp, dm)
 	# fit the model
-	result = logit.fit(maxiter=100)
-	print result.summary()
-	print 
-	print 'Odds ratios:'
-	print np.exp(result.params)
-
-	return result.params 
+	result = logit.fit(maxiter=maxiter)
+	if doPrint:
+		print result.summary()
+		print 
 
 
-def logreg_wrapper(master, gb_type, vlist, varset, additional_data, target='target'):
+	log_odds = zip(['intercept']+preds, result.params)
+	
+	# sorts by absolute magnitude of log odds
+	sorted_log_odds = sorted([x for x in log_odds], key=lambda x: abs(x[1]), reverse=True)
+
+	# converts to regular odds ratios
+	sorted_odds_ratio = [(x[0], np.exp(x[1])) for x in sorted_log_odds]
+
+	
+	oddsdf = pd.DataFrame(sorted_odds_ratio, columns=['field','odds_ratio'])
+	oddsdf['log_odds'] = [x[1] for x in sorted_log_odds]
+
+	if doPrint:
+		print 'Odds ratios (sorted by magnitude):'
+		print oddsdf
+	
+	return log_odds, sorted_log_odds, sorted_odds_ratio
+
+
+def logreg_wrapper(master, gb_type, vlist, varset, additional_data, scale_data=False, target='target', doPrint=True):
 	''' formatting wrapper for logreg_output() 
 		returns list of tuples: (predictor_name, log_odds) '''
 
 	if additional_data == 'pca':
 		predictors = [col for col in master.columns if col != 'target']
 		response = master[target]
-		design_matrix = smtools.add_constant(master[predictors])
+		df = master
+
 	else:
 		#print 'vars:', varset[gb_type][vlist]
 		predictors = varset[gb_type][vlist] 
 		response = master[gb_type][target]
-		design_matrix = smtools.add_constant(master[gb_type][predictors]) # adds bias term, ie. vector of ones
+		df = master[gb_type]
+
+	if scale_data:
+		# standardize X vars 
+		# LR may not converge without this (especially for Twitter data)
+		X = pd.DataFrame(scale(df[predictors]), columns=predictors)
+		response.reset_index(drop=True, inplace=True)
+	else:
+		X = df[predictors]
+
+	design_matrix = smtools.add_constant(X) # adds bias term, ie. vector of ones
 
 	print 'UNIT OF MEASUREMENT:', gb_type
 	print
 
-	logodds = logreg_output(design_matrix, response)
-	return zip(predictors,logodds)
+	log_odds, sorted_log_odds, sorted_odds_ratio = logreg_output(design_matrix, response, predictors,
+																 maxiter=100, doPrint=doPrint)
+	return design_matrix, sorted_log_odds
 
 
 def save_master_to_file(additional_data, posting_cutoff, use_pca, pca_num_comp, gb_type, report, condition, m, save_df):
@@ -2327,7 +2114,7 @@ def save_master_to_file(additional_data, posting_cutoff, use_pca, pca_num_comp, 
 
 def master_actions(master, target, control, condition, m, params, gb_type, 
 				   report, aparams, clfs, additional_data, posting_cutoff,
-				   use_pca=False):
+				   use_pca=False, scale_data=False):
 	''' Performs range of actions on master data frame, including plotting, modeling, and saving to disk. 
 		
 		Note: "Master" may refer to any set of target+control data, including timeline subsets. 
@@ -2391,12 +2178,12 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 
 	if aparams['save_to_file']:
 		if use_pca:
-			save_df = pca_df
+			save_df = pca_df.copy()
 			pca_ct = action_params['best_pca']+1
 		else:
-			save_df = master[gb_type]
+			save_df = master[gb_type].copy()
 			pca_ct = None
-
+			
 		save_master_to_file(additional_data, posting_cutoff, use_pca, pca_ct, 
 							gb_type, report, condition, m, save_df)
 
@@ -2409,7 +2196,9 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 
 		print
 		print 'LOGISTIC REGRESSION'
-		master['model']['logodds'] = logreg_wrapper(master, gb_type, vlist, params['vars'][m], additional_data)
+		
+		_, master['model']['logodds'] = logreg_wrapper(master, gb_type, vlist, params['vars'][m],
+													   additional_data, scale_data=scale_data)
 
 		if aparams['use_ttest']:
 			print
@@ -2933,14 +2722,10 @@ def fit_hmm(df, preds, K=2, show_hist=True,
 	# HMM needs to know how many posts are in the chronology for each user
 	# NB: ct_col here is not special, we can use any column that count() turns into a count vector.
 	lengths = hmmdf.groupby(gb_col).count()[ct_col].values
-	
-	# testing
-	print 'num predictors:', preds.shape
+
 	# see Working with Multiple Sequences for more on the lengths argument
 	# http://hmmlearn.readthedocs.io/en/latest/tutorial.html#training-hmm-parameters-and-inferring-the-hidden-states
 	hmm = GaussianHMM(n_components=K).fit( hmmdf[preds], lengths )
-
-	print 'num hmm means:', hmm.means_.shape 
 
 	probas = hmm.predict_proba( hmmdf[preds] )
 	
@@ -3032,11 +2817,9 @@ def compare_hmm_means(hmm, hmmdf, cols, state=0, decision=0.5, K=2, reporting=Tr
 	return target_state
 
 
-def prepare_hmm_plot_data(hmmdf, hmm_master, target_state, klass, roll=90, doPrint=False):
+def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass, roll=90, doPrint=False):
 	
-	key_var = 'proba{}'.format(target_state)
 	roll = 90
-	
 	ct = 0
 	color_ct = 0
 	uct = 0

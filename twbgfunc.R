@@ -1,6 +1,7 @@
-get.data.fpath <- function(condition,medium,gb.type,kind,pca) {
+get.data.fpath <- function(condition,medium,gb.type,kind,pca,pca.comp) {
   dir.path <- paste('data-files',condition,medium,gb.type,sep='/')
-  fname <- paste(condition,medium,gb.type,kind,pca,sep='_')
+  pca.suffix <- ifelse(pca, paste('pca',pca.comp,sep='-'), 'no-pca')
+  fname <- paste(condition,medium,gb.type,kind,pca.suffix,sep='_')
   fpath <- paste0(dir.path,'/',fname,'.csv')
   return(fpath)
 }
@@ -13,11 +14,11 @@ get.jags.path <- function(ftype,which.f,condition,medium,kind,gb.type,m) {
 }
 
 
-set.model.data <- function(medium, gb.type, means, varset, df, pca){
+set.model.data <- function(medium, gb.type, means, varset, df, m, pca){
   
   if (pca) {
     # pca var names are in the form: "pca_[component_number]"
-    preds <- varset
+    preds <- varset[[m]]
   } else {
     # which predictors do we use for this medium/groupby type?  see varset.R for more.
     preds <- varset[[medium]][[gb.type]][[means]]
@@ -251,25 +252,30 @@ mcmc.pack.model <- function(data, burnin, n, thin, b0, B0, m) {
   return(mcmc)
 }
 
-compare.bayes.factor <- function(fits, addtl, hsv.separate) {
+compare.bayes.factor <- function(fits, pca, pca.frames) {
   # computes bayes factors for each model and compares them 
   
-  if (addtl) {
-    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['ig_face_means']][[1]], 
-                           fits[['ratings_means']][[1]])
-    col.names <- c('intercept_only','metadata','ratings')
-  } else {
-    if (hsv.separate) {
-      
-      bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['hsv_means']][[1]], 
-                             fits[['all_ig_means']][[1]], fits[['ig_face_means']][[1]])
-      col.names <- c('intercept_only','hsv','all_instagram','insta_plus_face')
+  if (pca) {
+    if (length(pca.frames) == 1) {
+      pca.fit.name <- paste0('pca_',pca.frames[1])
+      bfactor <- BayesFactor(fits[['intercept_only']][[1]], 
+                             fits[[pca.fit.name]][[1]]
+                             )
     } else {
-      bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['ig_face_means']][[1]])
-      col.names <- c('intercept_only','all_instagram')
+      bfactor <- BayesFactor(fits[['intercept_only']][[1]], 
+                             fits[['pca_2']][[1]], 
+                             fits[['pca_3']][[1]],
+                             fits[['pca_72']][[1]]
+                             )
     }
+    
+    col.names <- names(fits)
+  } else {
+    bfactor <- BayesFactor(fits[['intercept_only']][[1]], fits[['basic_tweet_means']][[1]], fits[['all_means']][[1]])
   }
+  
   bf.mat <- bfactor$BF.log.mat
+  col.names <- names(fits)
   colnames(bf.mat) <- col.names
   rownames(bf.mat) <- col.names
   print('Bayes Factor model matrix:')
