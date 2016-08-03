@@ -10,6 +10,7 @@ from string import Template
 from IPython.display import Image, display
 from matplotlib import pyplot as plt
 import matplotlib as mpl
+from matplotlib.ticker import FuncFormatter
 import seaborn as sns
 sns.set_style('white')
 
@@ -1304,6 +1305,8 @@ def make_groupby(df, m, pop, params, gb_types,
 		# testing
 		#print 
 		#print 'ROUND:', m, pop, gb_type, 'period:', period, 'turn:', turn_point
+		#if gb_type == 'user_id':
+		#	print 'before gb, unique user_id:', to_group_df.user_id.unique().shape[0]
 		#print 'to_group_df shape:', to_group_df.shape
 		#print to_group_df.columns
 		#print 'agg cols:'
@@ -1315,8 +1318,10 @@ def make_groupby(df, m, pop, params, gb_types,
 										.agg(params['agg_func'][m][gb_type])
 							)
 		# testing
-		#print 'gb df shape:', df['gb'][gb_type].shape
-		#print 'columns:', df['gb'][gb_type].columns
+		#if gb_type == 'user_id':
+		#	print 'gb df shape:', df['gb'][gb_type].shape
+			#print 'columns:', df['gb'][gb_type].columns
+		#	print 'after gb, unique user_id:', df['gb'][gb_type].user_id.unique().shape[0]
 
 		if m == 'ig':
 			if additional_data:
@@ -1420,8 +1425,16 @@ def merge_to_master(master, target, control, m, varset, gb_type, additional_data
 
 	c = control[gb_type]
 	t = target[gb_type]
+
 	#subset = params['master_subset'][m][gb_type]
 	master[gb_type] = pd.concat([c,t], axis=0)#.dropna(subset=subset)
+
+
+	if gb_type == 'user_id':
+		print 'unique CONTROL user_id:', c.user_id.unique().shape[0]
+		print 'unique TARGET user_id:', t.user_id.unique().shape[0]
+		print 'unique MASTER user_id:', master[gb_type].user_id.unique().shape[0]
+
 	if additional_data:
 		vlist = 'full'
 	else:
@@ -1595,20 +1608,39 @@ def roc_wrapper(fits, ctype, y_test, X_test, plat):
 	plt.show()
 
 
-def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cutoff=.01):
+# this removes the leading zero (0.99 -> .99), used for pyplot formatting
+def drop_leading_zero_formatter(x, pos):
+	''' Format 1 as 1, 0 as 0, and all values whose absolute values is between
+	0 and 1 without the leading "0." (e.g., 0.7 is formatted as .7 and -0.4 is
+	formatted as -.4).
+		Source: http://stackoverflow.com/questions/8555652/removing-leading-0-from-matplotlib-tick-label-formatting '''
+
+	val_str = '{:g}'.format(x)
+	if np.abs(x) > 0 and np.abs(x) < 1:
+		return val_str.replace("0", "", 1)
+	else:
+		return val_str
+
+	
+def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cutoff=.01, imp_subset=10):
 	# Plot the feature importances of the forest
 	fimpdf = pd.DataFrame(fits[ctype]['clf'].feature_importances_, index=model_feats, columns=['importance'])
 	
 	if tall_plot:
 		fsize = (5,11)
 	else:
-		fsize = (5,7)
+		fsize = (3,4)
 	plt.figure() 
-	(fimpdf.sort_values('importance', ascending=True)
-		   .ix[fimpdf.importance > imp_cutoff,:]
-		   .plot(kind='barh', figsize=fsize, fontsize=14)
-	 )
-	plt.title("Best predictors (Random Forests, subset:{})".format(title), fontsize=16)
+	fimpdf = fimpdf.sort_values('importance', ascending=False).ix[fimpdf.importance > imp_cutoff,:]
+	print fimpdf.head()
+	feat_names = fimpdf.index
+	fimpdf.reset_index(drop=True)
+	ax = fimpdf.ix[0:imp_subset,'importance'].plot(kind='barh', figsize=fsize, fontsize=14)
+	plt.gca().invert_yaxis()
+	major_formatter = FuncFormatter(drop_leading_zero_formatter)
+	ax.xaxis.set_major_formatter(major_formatter)
+	plt.xticks(fontsize=10)
+	plt.title("Top depression predictors ({})".format(title), fontsize=16)
 	plt.show()
 
 
@@ -1737,24 +1769,27 @@ def update_acc_metrics(fit, X_test, y_test, cv_iters, acc_avg):
 	return probas_
 	
 
-def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None):
+def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None, tinyfig=True, clf_name='Random Forests'):
 	''' Plots ROC curve '''
 	
 	if i is not None:
+		if (i == 0) and tinyfig:
+			plt.figure(figsize=(4,4))
 		# Compute ROC curve and area under the curve
 		fpr, tpr, thresholds = roc_curve(y_test, probas_[:, 1])
 		mean_tpr += interp(mean_fpr, fpr, tpr)
 		mean_tpr[0] = 0.0
 		roc_auc = auc(fpr, tpr)
-		plt.plot(fpr, tpr, lw=1, label='ROC fold %d (area = %0.2f)' % (i, roc_auc))
+		plt.plot(fpr, tpr, lw=1, label='ROC (area = {})'.format(round(roc_auc,2)))
 	else:
-		plt.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Luck')
+		plt.plot([0, 1], [0, 1], '--', color=(0.6, 0.6, 0.6), label='Random chance')
 		plt.xlim([-0.05, 1.05])
 		plt.ylim([-0.05, 1.05])
-		plt.xlabel('False Positive Rate')
-		plt.ylabel('True Positive Rate')
-		plt.title('ROC Plot: Random Forests')
-		plt.legend(loc="lower right")
+		plt.xlabel('False Positive Rate', fontsize=14)
+		plt.ylabel('True Positive Rate', fontsize=14)
+		plt.xticks(fontsize=11)
+		plt.title('ROC Plot: {}'.format(clf_name), fontsize=16)
+		plt.legend(loc="lower right", fontsize=12)
 		plt.show()
 	
 	
@@ -1878,7 +1913,8 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 		output[ctype] = fits[ctype]['clf']
 
 		if ctype == 'rf':
-			importance_wrapper(fits, ctype, model_feats, title, d['tall_plot'], d['rf_params']['imp_cutoff'])
+			importance_wrapper(fits, ctype, model_feats, title, 
+							   d['tall_plot'], d['rf_params']['imp_cutoff'], d['rf_params']['imp_subset'])
 	
 		output[ctype] = fits[ctype]['clf']
 
@@ -2146,7 +2182,14 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 		else:
 			vlist = 'no_addtl_means'
 
-		model_df = {'name':'Models: {} {}'.format(report, gb_type),
+		if aparams['rf_imp_cutoff']:
+			imp_cutoff = aparams['rf_imp_cutoff']
+		else:
+			imp_cutoff = .015 # use .01 for instagram, .015 for twitter (depression)
+
+		gb_type_report = 'daily bins' if gb_type == 'created_date' else '{} bins'.format(gb_type)
+		
+		model_df = {'name':'{}'.format(gb_type_report),
 					'unit':gb_type,
 					'data':master[gb_type],
 					'features':params['vars'][m][gb_type][vlist],
@@ -2166,7 +2209,8 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 								  'min_ss':2,
 								  'min_sl':1,
 								  'max_depth':None,
-								  'imp_cutoff':.015} 
+								  'imp_cutoff':aparams['rf_imp_cutoff'],
+								  'imp_subset':aparams['rf_imp_subset']} 
 				   }
 
 		output, pca_df, best_f1, master_results = make_models(model_df, clf_types=clfs, 
@@ -2762,7 +2806,32 @@ def show_class_diffs(hmm, hmmdf, predictors, to_show=10, show_neg=True, diff_col
 	return hmm_diff.sort_values(diff_colname, ascending=show_neg).iloc[0:to_show]
 
 
-def compare_hmm_means(hmm, hmmdf, cols, state=0, decision=0.5, K=2, reporting=True):
+def build_comparison_data(compare_source, data, platform, gb_type, means, varset, additional_data):
+	''' Builds comparison data points to evaluate whether HMM latent states map onto response variable states 
+		Uses either logistic regression coefficients or mean differences between target/control classes. '''
+	
+	if compare_source == 'logistic regression':
+		
+		# we use logreg coefficients (log odds) to compare against HMM predictor means, as a means of labeling states 0/1
+		dm, log_odds = logreg_wrapper(data['master'], gb_type, means, 
+									  params['vars'][platform], 
+									  additional_data, doPrint=False)
+		compare_data = [x for x in log_odds if x[0] != 'intercept']
+	
+	elif compare_source == 'raw means':
+		
+		gb_type = 'created_date'
+		preds = params['vars'][platform][gb_type]['no_addtl_means']
+		df = data['master'][gb_type][preds]
+		df['target'] = data['master'][gb_type].target
+		compare_data = []
+		for field in preds:
+			compare_data.append( (field, df.ix[df.target==1, field].mean() - df.ix[df.target==0, field].mean()) )
+
+	return compare_data
+	
+
+def compare_hmm_means(hmm, hmmdf, cols, compare_source, state=0, decision=0.5, K=2, reporting=True):
 	''' T-tests to determine if State1 and State0 means are different for obs. assigned to each state by HMM 
 		Kwargs: state -> which HMM state number to split on, decision -> cut point for state membership '''
 	
@@ -2814,6 +2883,9 @@ def compare_hmm_means(hmm, hmmdf, cols, state=0, decision=0.5, K=2, reporting=Tr
 		target_state = antistate
 	
 	print 'state=0 agree ct: {}, state=1 agree ct: {}'.format(ct[state],ct[antistate])
+	print
+	print 'target_state, as determined by HMM agreement with {}:'.format(compare_source), target_state
+	
 	return target_state
 
 
