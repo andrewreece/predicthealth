@@ -1980,7 +1980,7 @@ def ttest_wrapper(master, gb_type, varset, additional_data, split_var='target', 
 	return ttest_output(a, b, varset[gb_type][vlist], ttype)
 
 
-def compare_filters(data, conn, level, gb_type, show_figs=True):
+def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False):
 	''' Chi2, plotting comparisons of Instagram filter use between target and control pops '''
 
 	metaig = pd.read_sql_query('select username, filter, d_from_diag_depression as ddiag from meta_ig', conn)
@@ -2020,8 +2020,6 @@ def compare_filters(data, conn, level, gb_type, show_figs=True):
 
 	print 'filters that missed the cut:',filtct.index[~filtct.index.isin(filtct_chi2.index)].astype(str).values
 
-
-
 	no_filt = filts['filter']=="Normal"
 	tm = filts.target==1
 	filts['has_filter'] = True
@@ -2046,7 +2044,8 @@ def compare_filters(data, conn, level, gb_type, show_figs=True):
 	#above1pct = filtprop.ix[(filtprop.target > 0.01)&(filtprop.control > 0.01),:].index
 	#filtct_chi2 = filtct.ix[filtct.index.isin(above1pct),:]
 	chi2 = stats.chi2_contingency(observed=filtct_chi2)
-	filtct_chi2expect = pd.DataFrame(chi2[3], columns=['control','target'], index=filtct_chi2.index)
+	filtct_chi2expect = pd.DataFrame(chi2[3], columns=['Healthy','Depressed'], index=filtct_chi2.index)
+	filtct_chi2.rename(columns={'control':'Healthy','target':'Depressed'}, inplace=True)
 	filtct_chi2offset = filtct_chi2 - filtct_chi2expect 
 
 	print 'chi2 stats comparing Instagram filters:'
@@ -2056,18 +2055,44 @@ def compare_filters(data, conn, level, gb_type, show_figs=True):
 
 	if show_figs:
 		plt.figure()
-		filtct_chi2.sort_values('target',ascending=False).plot(kind='bar', figsize=(16,8), fontsize=14)
-		plt.title('Instagram filter frequency counts (target=depressed)', fontsize=18)
+		(filtct_chi2.sort_values('Depressed',ascending=False)
+					.plot(kind='bar', figsize=(16,8), fontsize=14)
+		)
+		plt.title('Instagram filter use', fontsize=18)
+		plt.ylabel('Frequency',fontsize=14)
+		plt.xlabel('Filter names', fontsize=14)
+		if not show_neg_x:
+			plt.ylim(ymin=0)
 
 		plt.figure()
-		filtct_chi2offset.sort_values('target',ascending=True).plot(kind='bar', figsize=(16,8), fontsize=14)
-		plt.title('Instagram filter frequency count Chi2 offset (observed-expected)', fontsize=18)
+		(filtct_chi2offset.sort_values('Depressed',ascending=True)
+						  .plot(kind='bar', figsize=(16,8), fontsize=14, width=1)
+		)
+		plt.title('Instagram filter use', fontsize=18)
+		plt.ylabel('Usage difference (Chi^2 observed-expected)', fontsize=14)
+		plt.xlabel('Filter names', fontsize=14)
+		if not show_neg_x:
+			plt.ylim(ymin=0)
 
 		plt.figure()
-		filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values('target',ascending=True).plot(kind='bar', figsize=(16,8), fontsize=14)
-		plt.title('Instagram filter frequency count Chi2 offset (observed-expected), Normal excluded', fontsize=18)
+		color_palette_mask = (filtct_chi2offset.Depressed.values > 0)
+		color_palette = ['gray' if case else 'blue' for case in color_palette_mask]
+		df_notnorm = filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values('Depressed',ascending=True)
+		
+		ax = df_notnorm.plot(kind='bar', figsize=(16,8), fontsize=14,width=.8, align='center', 
+							 color=[sns.xkcd_rgb['orangered'],sns.xkcd_rgb['french blue']])
+		#df_notnorm.reset_index(inplace=True)
+		#ax=sns.barplot(data=df_notnorm)
+		plt.title('Instagram filter usage difference between depressed and healthy users', fontsize=20)
+		plt.ylabel('Usage difference (Chi^2 observed-expected)', fontsize=18)
+		plt.xlabel('Filter names', fontsize=18)
+		plt.xticks(fontsize=14)
+		ax.set_xticks(np.arange(filtct_chi2.index.shape[0]))
+		plt.legend(fontsize=16)
+		if not show_neg_x:
+			plt.ylim(ymin=0)
 
-	return filts 
+	return filtct_chi2offset
 
 
 def logreg_output(dm, resp, preds, doPrint=True, maxiter=100):
