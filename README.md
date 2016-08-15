@@ -1,4 +1,4 @@
-*Data Collection*  
+**Data Collection**  
 <tt>run.py</tt> handles all of the RESTful/outward-facing requests (eg. /verify/\<username\>).
 <br /><br />
 <tt>collect.py</tt> and <tt>verify.py</tt> have medium-specific methods for verifying that a participant has followed us, and collecting their data.
@@ -10,7 +10,7 @@
 <br /><br />
 <tt>util.py</tt> has various database and other helper functions.
   
-*Analysis*
+**Analysis**
 <ul>
 <li><tt>eda-instagram</tt> and tt>eda-twitter</tt> are the analytical frames</li>
 <li><tt>bgfunc</tt> contains all the heavy lifting for analysis and processing</li>
