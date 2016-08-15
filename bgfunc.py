@@ -130,14 +130,20 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 											   'swear','social','posemo','anx','anger','sad','cogmech','percept',
 											   'body','health','sexual','ingest','relativ','work','achieve',
 											   'leisure','home','money','relig','death','assent']]
+	if condition in ['ptsd','pregnancy']:
+		extra_fields = ', d_from_event_{cond} as from_event, event_date_{cond} as event_date'.format(cond=condition)
+	else:
+		extra_fields = ''
+
 	params = {
 			'q': {
 				't': {
-					'meta':	'select {fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat} where created_date is not null and created_date is not "" and d_from_diag_{cond} is not null{ratings_clause}'.format(cond=condition,
+					'meta':	'select {fields}{extra_fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat} where created_date is not null and created_date is not "" and d_from_diag_{cond} is not null{ratings_clause}'.format(cond=condition,
 																																																											  ratings_clause=ratings_clause,
 																																																											  plat=platform,
 																																																											  plat_long=platform_long,
-																																																											  fields=fields),
+																																																											  fields=fields,
+																																																											  extra_fields=extra_fields),
 					'photo_ratings':'select url, rater_id, happy, sad, interesting, likable, one_word, description from photo_ratings_{cond}_target'.format(cond=condition),
 					'before_diag':	'select {fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date from meta_{plat} where d_from_diag_{cond} < 0{ratings_clause}'.format(cond=condition,
 																																										plat=platform,
@@ -158,10 +164,11 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 					'unames':		'select username from control where platform="{plat_long}" and username is not null and {cond}="No" and disqualified=0'.format(plat_long=platform_long,
 																																								   cond=condition)
 				},
-				'all_meta':	'select {fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat}'.format(cond=condition,
+				'all_meta':	'select {fields}{extra_fields}, username, {plat_long}_user_id as user_id, created_date, diag_date_{cond} as diag_date, d_from_diag_{cond} as from_diag, d_from_susp_{cond} as from_susp from meta_{plat}'.format(cond=condition,
 																																															 plat=platform,
 																																															 plat_long=platform_long,
-																																															 fields=fields),
+																																															 fields=fields,
+																																															 extra_fields=extra_fields),
 				'all_hsv':	'select url, hue, saturation, brightness, username from hsv'
 			},
 			'agg_func':{
@@ -317,23 +324,23 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'no_addtl_means':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								   'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'LIWC_happs'] + LIWC_vars,
 						'model':['LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
-								 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply''LIWC_happs'] + LIWC_vars,
+								 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply','LIWC_happs'] + LIWC_vars,
 						'full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
 								 'from_diag','from_susp','before_diag','before_susp', 
-								 'created_date','diag_date', 'LIWC_happs'] + LIWC_vars,
+								 'created_date','diag_date','event_date','from_event', 'LIWC_happs'] + LIWC_vars,
 						'no_addtl_full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
 								 'from_diag','from_susp','before_diag','before_susp', 
-								 'created_date','diag_date', 'LIWC_happs'] + LIWC_vars,
+								 'created_date','diag_date','event_date','from_event', 'LIWC_happs'] + LIWC_vars,
 						}
 				}
 					
 			},
 			'fields_to_merge':{
 				'tw':{
-					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
-					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
+					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date','event_date','from_event'],
+					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date','event_date','from_event'],
 					'user_id':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count']
 					},
 				'ig':{}
@@ -396,6 +403,27 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'one_word':		'_|_'.join,
 			'description':	'__|__'.join}
 		)
+
+	if condition in ['ptsd','pregnancy']:
+		if platform == 'tw':
+			params['agg_func'][platform]['weekly'].update(			
+				{'event_date':	'first',
+				'from_event':	'mean'}
+			)
+			params['agg_func'][platform]['created_date'].update(			
+				{'event_date':	'first',
+				'from_event':	'first'}
+			)
+		elif platform == 'ig':
+			params['agg_func'][platform]['created_date'].update(			
+				{'event_date':	'first',
+				'from_event':	'mean'}
+			)
+			params['agg_func'][platform]['post'].update(			
+				{'event_date':	'first',
+				'from_event':	'first'}
+			)
+
 	return params 
 
 
@@ -428,7 +456,7 @@ def report_sample_sizes(params, conn, cond, plat_long, test_cutoff,
 
 		q = 'select platform{} from {} where username is not null and diag_year is not null and disqualified=0'.format(extra_field, t)
 		samp = pd.read_sql_query(q,conn)
-		print 'TARGET :: {cond} / {plat} total:'.format(cond=t.upper(),plat=plat_long.upper()),samp.ix[samp.platform=='{}'.format(plat_long),:].shape[0]
+		print 'TARGET :: {cond} / {plat} total:'.format(cond=t.upper(), plat=plat_long.upper()), samp.ix[samp.platform=='{}'.format(plat_long),:].shape[0]
 		if t in ['ptsd','depression']:
 			print 'TARGET :: {cond} / {plat} {test} > {tc}:'.format(cond=t.upper(),plat=plat_long.upper(),test=test,tc=test_cutoff), samp.ix[(samp.platform=='{}'.format(plat_long)) & (samp[test] > test_cutoff), :].shape[0]
 		print
@@ -505,12 +533,17 @@ def subj_data_by_pop(data, target, platform, local_params, conn):
 			output['control']['perc_diag_within_13_15'] = None
 
 		elif pop == 'target':
-			q = 'select {uunit}, year_born, diag_date from {cond} where platform="{pl}" and {uunit} in {uset}'.format(cond=target,
+			q = 'select {uunit}, year_born, diag_date from {cond} where platform="{pl}" and {uunit} in {uset} and diag_date is not null'.format(cond=target,
 																													  pl=platform,
 																													  uunit=user_unit,
 																													  uset=tup)
 			d = pd.read_sql_query(q,conn)
 			d.drop_duplicates(subset=[user_unit], inplace=True)
+			
+			#if target == 'ptsd':
+			#	d.diag_date = d.diag_date.apply(lambda x: '-'.join([x[0:4],x[4:6],x[6:]]))
+			d.dropna(subset=['diag_date'], inplace=True)
+			
 			output['target']['femprop'] = None
 
 			ts = pd.to_datetime(d.diag_date)
@@ -770,8 +803,8 @@ def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 	data[pop_long]['all'] = df.ix[df.user_id.isin(new_ids),:].copy()
 
 
-def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points,
-					 posting_cutoff=False, additional_data=False, 
+def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points, 
+					 post_event=False, posting_cutoff=False, additional_data=False, 
 					 include_filter=True, limit_date_range=False):
 	''' Pulls data from db, cleans, and aggregates. Also creates subsets based on diag/susp date '''
 
@@ -782,7 +815,7 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		
 		# get basic data (hsv or tweets...no photo ratings yet)
 		get_basic_data(data, platform, params, conn, pop, pop_long, limit_date_range)
-		
+
 		''' For tweets, additional data are word features, but because they are already in db as gb'd data,
 			we add them in during the make_groupby() process, instead of here.  Photo ratings, on the other hand,
 			are not stored as aggregated data. '''
@@ -793,6 +826,35 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		if posting_cutoff and (platform == 'ig'):
 			cut_low_posters(data, pop_long)
 
+		def convert_field_to_float(x):
+			if (x == '') | (x == 'None'):
+				return None
+			elif x == None:
+				return x
+			else:
+				try:
+					return float(x)
+				except:
+					print 'FAILED ON:', x
+					
+		# aug 11 2016: database diag_date for all conditions but depression are of form "YYYYMMDD"
+		# but we need "YYYY-MM-DD". this line converts them.  should just update db register eventually.
+		if condition != 'depression':
+			if platform == 'ig':
+				dset = 'all'
+			elif platform == 'tw':
+				dset = 'tweets'
+
+			#print 'platform:', platform, 'dset:', dset
+			#print data[pop_long][dset].diag_date.unique()
+
+			#if pop == 't':
+			#    	data[pop_long][dset].diag_date = data[pop_long][dset].diag_date.apply(lambda x: '-'.join([x[0:4],x[4:6],x[6:]]))
+			for date_type in ['diag','event']:
+				field = 'from_{}'.format(date_type,condition)
+				data[pop_long][dset][field] = data[pop_long][dset][field].apply(convert_field_to_float)
+
+
 		# aggregate data by groupby types (url, username, created_date)
 		make_groupby(data[pop_long], platform, pop_long, params, gb_types, 
 					 conn, condition, additional_data,
@@ -801,14 +863,14 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 		if pop_long == 'target':
 			# creates before/after subsets for target pop
 			# subsets stored in: data[m]['target'][period][turn_point]['all']
-			make_timeline_subsets(data, platform, periods)
+			make_timeline_subsets(data, platform, periods, post_event)
 		
 			for period in periods:
 				for turn_point in turn_points:
 					turn_point = turn_point.replace("-","_") # because of the weird -/_ switch you did in Twitter
 					# aggregate data by groupby types (url, username, created_date)
 					make_groupby(data[pop_long][period][turn_point], platform, pop_long, params, gb_types, 
-								 conn, condition, additional_data, period = period, turn_point=turn_point)  
+								 conn, condition, additional_data, period = period, turn_point=turn_point)
 
 
 def get_pop_unames(params, m, conn, pop):
@@ -1188,7 +1250,7 @@ def map_str_ratings_to_numeric(data):
 	data['target']['ratings'].replace(to_replace=key,inplace=True)
 
 
-def make_timeline_subsets(data, m, periods=['before','after'], doPrint=True):
+def make_timeline_subsets(data, m, periods=['before','after'], post_event=False, doPrint=True):
 	''' Creates subset of target observations based on diagnosis date.
 
 		Currently (Apr 28 2016) we make the following subsets.  Note that "before/after" means two separate sets.
@@ -1199,7 +1261,10 @@ def make_timeline_subsets(data, m, periods=['before','after'], doPrint=True):
 		  #- only observations with photo ratings, before/after SUSP_date
 		Twitter:
 		  - all data from before/after DIAG_date
-		  - all data from before/after SUSP_date '''
+		  - all data from before/after SUSP_date 
+
+		(Aug 12 2016) 
+		Added post_event arg, use to backward-bound pre-diag data by event_date (eg. ptsd trauma, preg concep)'''
 
 	if m == 'ig':
 		base = 'all'
@@ -1211,7 +1276,10 @@ def make_timeline_subsets(data, m, periods=['before','after'], doPrint=True):
 
 		for turn_point in ['from_diag','from_susp']:
 			if period == 'before':
-				subset = (data['target'][base][turn_point] < 0)
+				if post_event:
+					subset = (data['target'][base][turn_point] < 0) & (data['target'][base]['from_event'] >= 0)
+				else:
+					subset = (data['target'][base][turn_point] < 0)
 			elif period == 'after':
 				subset = (data['target'][base][turn_point] >= 0)
 				
@@ -1308,6 +1376,8 @@ def make_groupby(df, m, pop, params, gb_types,
 		#if gb_type == 'user_id':
 		#	print 'before gb, unique user_id:', to_group_df.user_id.unique().shape[0]
 		#print 'to_group_df shape:', to_group_df.shape
+		#for col in to_group_df.columns:
+		#	print col, to_group_df[col].dtype 
 		#print to_group_df.columns
 		#print 'agg cols:'
 		#print params['agg_func'][m][gb_type]
@@ -1407,7 +1477,8 @@ def summary_stats(data, gb_type, level, additional_data):
 
 			if level == 'main':
 				df = data['master'][gb_type]
-				df = df.ix[df.target==pval,:]
+				mask = (df.target==pval).values
+				df = df.ix[mask,:]
 			else:
 				when = level.split("_")[0]
 				turn = 'from_{}'.format(level.split("_")[1])
@@ -1622,7 +1693,11 @@ def drop_leading_zero_formatter(x, pos):
 		return val_str
 
 	
-def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cutoff=.01, imp_subset=10):
+def importance_wrapper(fits, ctype, model_feats, title, condition, tall_plot=False, imp_cutoff=.01, imp_subset=10):
+
+	# replace "happs" with "happy" (eg. LabMT_happs -> LabMT_happy)
+	model_feats = [re.sub('happs','happy',x) for x in model_feats]
+
 	# Plot the feature importances of the forest
 	fimpdf = pd.DataFrame(fits[ctype]['clf'].feature_importances_, index=model_feats, columns=['importance'])
 	
@@ -1632,7 +1707,7 @@ def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cut
 		fsize = (3,4)
 	plt.figure() 
 	fimpdf = fimpdf.sort_values('importance', ascending=False).ix[fimpdf.importance > imp_cutoff,:]
-	print fimpdf.head()
+	
 	feat_names = fimpdf.index
 	fimpdf.reset_index(drop=True)
 	ax = fimpdf.ix[0:imp_subset,'importance'].plot(kind='barh', figsize=fsize, fontsize=14)
@@ -1640,7 +1715,7 @@ def importance_wrapper(fits, ctype, model_feats, title, tall_plot=False, imp_cut
 	major_formatter = FuncFormatter(drop_leading_zero_formatter)
 	ax.xaxis.set_major_formatter(major_formatter)
 	plt.xticks(fontsize=10)
-	plt.title("Top depression predictors ({})".format(title), fontsize=16)
+	plt.title("Top {} predictors ({})".format(condition.capitalize(),title), fontsize=16)
 	plt.show()
 
 
@@ -1769,7 +1844,7 @@ def update_acc_metrics(fit, X_test, y_test, cv_iters, acc_avg):
 	return probas_
 	
 
-def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None, tinyfig=True, clf_name='Random Forests'):
+def plot_roc(y_test, probas_, mean_tpr, mean_fpr, condition, i=None, tinyfig=True, clf_name='Random Forests'):
 	''' Plots ROC curve '''
 	
 	if i is not None:
@@ -1788,7 +1863,7 @@ def plot_roc(y_test, probas_, mean_tpr, mean_fpr, i=None, tinyfig=True, clf_name
 		plt.xlabel('False Positive Rate', fontsize=14)
 		plt.ylabel('True Positive Rate', fontsize=14)
 		plt.xticks(fontsize=11)
-		plt.title('ROC Plot: {}'.format(clf_name), fontsize=16)
+		plt.title('{} ROC ({})'.format(clf_name, condition), fontsize=16)
 		plt.legend(loc="lower right", fontsize=12)
 		plt.show()
 	
@@ -1807,14 +1882,16 @@ def initialize_model_fits(fits, kernel, rfp):
 												   )}
 	
 
-def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False,
+def make_models(d, condition, clf_types=['lr','rf','svc'], 
+				excluded_set=None, use_pca=False, stratify_split=False,
 				labels={'known_0':'known_control',
 						'known_1':'known_target',
 						'pred_0':'pred_control',
 						'pred_1':'pred_target'}):
 
 	''' Makes, fits, and reports on machine learning models.  The ML workhorse in this script.
-		NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec.) '''
+		NOTE: clf_types can include: 'lr' (logistic reg.),'rf' (random forests),'svc' (support vec.) 
+		NOTE: set stratify_split = True to create stratified train/test splits '''
 
 	mdata = d['data']
 	title = d['name']
@@ -1824,6 +1901,12 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 	
 	X = mdata[feats].copy()
 	y = mdata[target]
+
+	print 'Stratify split:', stratify_split
+	if stratify_split:
+		stratify = y
+	else:
+		stratify = None 
 
 	cleanX(X)
 
@@ -1881,19 +1964,19 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 	for ctype in clf_types:
 		for i in range(cv_len):
 			
-			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=d['test_size'])
+			X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=d['test_size'], stratify=stratify)
 
 			fit = fits[ctype]['clf'].fit(X_train, y_train)
 
 			probas_ = update_acc_metrics(fit, X_test, y_test, cv_iters, d['acc_avg'])
-			plot_roc(y_test, probas_, mean_tpr, mean_fpr, i)
+			plot_roc(y_test, probas_, mean_tpr, mean_fpr, condition, i=i)
 
 		# compute mean accuracy metrics over cv iterations, print results
 		for metric in ['tn','pneg','neg','npv','specificity','precision','recall','f1']:
 			master_results[metric] = (round(np.mean(cv_iters[metric]),4), round(np.std(cv_iters[metric]),4))  
 			print metric.upper(), '::', master_results[metric]
 		
-		plot_roc(y_test, probas_, mean_tpr, mean_fpr)
+		plot_roc(y_test, probas_, mean_tpr, mean_fpr, condition)
 
 		if use_pca:
 			print 
@@ -1913,7 +1996,7 @@ def make_models(d, clf_types=['lr','rf','svc'], excluded_set=None, use_pca=False
 		output[ctype] = fits[ctype]['clf']
 
 		if ctype == 'rf':
-			importance_wrapper(fits, ctype, model_feats, title, 
+			importance_wrapper(fits, ctype, model_feats, title, condition,
 							   d['tall_plot'], d['rf_params']['imp_cutoff'], d['rf_params']['imp_subset'])
 	
 		output[ctype] = fits[ctype]['clf']
@@ -1980,10 +2063,12 @@ def ttest_wrapper(master, gb_type, varset, additional_data, split_var='target', 
 	return ttest_output(a, b, varset[gb_type][vlist], ttype)
 
 
-def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False):
+def compare_filters(data, conn, level, gb_type, label, show_figs=True, show_neg_x=False):
 	''' Chi2, plotting comparisons of Instagram filter use between target and control pops '''
 
 	metaig = pd.read_sql_query('select username, filter, d_from_diag_depression as ddiag from meta_ig', conn)
+
+	target_label = label.capitalize()
 
 	if level == 'main':
 
@@ -2044,8 +2129,8 @@ def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False
 	#above1pct = filtprop.ix[(filtprop.target > 0.01)&(filtprop.control > 0.01),:].index
 	#filtct_chi2 = filtct.ix[filtct.index.isin(above1pct),:]
 	chi2 = stats.chi2_contingency(observed=filtct_chi2)
-	filtct_chi2expect = pd.DataFrame(chi2[3], columns=['Healthy','Depressed'], index=filtct_chi2.index)
-	filtct_chi2.rename(columns={'control':'Healthy','target':'Depressed'}, inplace=True)
+	filtct_chi2expect = pd.DataFrame(chi2[3], columns=['Healthy',target_label], index=filtct_chi2.index)
+	filtct_chi2.rename(columns={'control':'Healthy','target':target_label}, inplace=True)
 	filtct_chi2offset = filtct_chi2 - filtct_chi2expect 
 
 	print 'chi2 stats comparing Instagram filters:'
@@ -2055,8 +2140,9 @@ def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False
 
 	if show_figs:
 		plt.figure()
-		(filtct_chi2.sort_values('Depressed',ascending=False)
-					.plot(kind='bar', figsize=(16,8), fontsize=14)
+		(filtct_chi2.sort_values(target_label,ascending=False)
+					.plot(kind='bar', figsize=(16,8), fontsize=14,
+						  color=[sns.xkcd_rgb['tomato'],sns.xkcd_rgb['french blue']])
 		)
 		plt.title('Instagram filter use', fontsize=18)
 		plt.ylabel('Frequency',fontsize=14)
@@ -2065,8 +2151,9 @@ def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False
 			plt.ylim(ymin=0)
 
 		plt.figure()
-		(filtct_chi2offset.sort_values('Depressed',ascending=True)
-						  .plot(kind='bar', figsize=(16,8), fontsize=14, width=1)
+		(filtct_chi2offset.sort_values(target_label,ascending=True)
+						  .plot(kind='bar', figsize=(16,8), fontsize=14, width=1,
+								color=[sns.xkcd_rgb['tomato'],sns.xkcd_rgb['french blue']])
 		)
 		plt.title('Instagram filter use', fontsize=18)
 		plt.ylabel('Usage difference (Chi^2 observed-expected)', fontsize=14)
@@ -2075,15 +2162,15 @@ def compare_filters(data, conn, level, gb_type, show_figs=True, show_neg_x=False
 			plt.ylim(ymin=0)
 
 		plt.figure()
-		color_palette_mask = (filtct_chi2offset.Depressed.values > 0)
+		color_palette_mask = (filtct_chi2offset[target_label].values > 0)
 		color_palette = ['gray' if case else 'blue' for case in color_palette_mask]
-		df_notnorm = filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values('Depressed',ascending=True)
+		df_notnorm = filtct_chi2offset.ix[filtct_chi2offset.index!='Normal',:].sort_values(target_label,ascending=True)
 		
 		ax = df_notnorm.plot(kind='bar', figsize=(16,8), fontsize=14,width=.8, align='center', 
-							 color=[sns.xkcd_rgb['orangered'],sns.xkcd_rgb['french blue']])
+							 color=[sns.xkcd_rgb['tomato'],sns.xkcd_rgb['french blue']])
 		#df_notnorm.reset_index(inplace=True)
 		#ax=sns.barplot(data=df_notnorm)
-		plt.title('Instagram filter usage difference between depressed and healthy users', fontsize=20)
+		plt.title('Instagram filter usage difference between label and healthy users', fontsize=20)
 		plt.ylabel('Usage difference (Chi^2 observed-expected)', fontsize=18)
 		plt.xlabel('Filter names', fontsize=18)
 		plt.xticks(fontsize=14)
@@ -2230,7 +2317,7 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 					'rf_params': {# params optimized with 5-fold CV, see optimize_rf_hyperparams()
 								  'class_wt':'balanced',
 								  'max_feat':'sqrt',
-								  'n_est':10,
+								  'n_est':aparams['rf_n_est'],
 								  'min_ss':2,
 								  'min_sl':1,
 								  'max_depth':None,
@@ -2238,9 +2325,9 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 								  'imp_subset':aparams['rf_imp_subset']} 
 				   }
 
-		output, pca_df, best_f1, master_results = make_models(model_df, clf_types=clfs, 
+		output, pca_df, best_f1, master_results = make_models(model_df, condition=condition, clf_types=clfs, 
 														   excluded_set=params['model_vars_excluded'][m][gb_type],
-														   use_pca=use_pca)
+														   use_pca=use_pca, stratify_split=aparams['stratify'])
 
 		for k in output.keys():
 			master['model'][gb_type][k] = output[k]
@@ -2839,14 +2926,13 @@ def build_comparison_data(compare_source, data, platform, gb_type, means, varset
 		
 		# we use logreg coefficients (log odds) to compare against HMM predictor means, as a means of labeling states 0/1
 		dm, log_odds = logreg_wrapper(data['master'], gb_type, means, 
-									  params['vars'][platform], 
+									  varset, 
 									  additional_data, doPrint=False)
 		compare_data = [x for x in log_odds if x[0] != 'intercept']
 	
 	elif compare_source == 'raw means':
 		
-		gb_type = 'created_date'
-		preds = params['vars'][platform][gb_type]['no_addtl_means']
+		preds = varset[gb_type][means]
 		df = data['master'][gb_type][preds]
 		df['target'] = data['master'][gb_type].target
 		compare_data = []
@@ -2914,7 +3000,8 @@ def compare_hmm_means(hmm, hmmdf, cols, compare_source, state=0, decision=0.5, K
 	return target_state
 
 
-def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass, roll=90, doPrint=False):
+def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass, 
+						  date_type='diag', offset=365, roll=90, doPrint=False):
 	
 	roll = 90
 	ct = 0
@@ -2922,36 +3009,44 @@ def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass, roll=90, doPrint=Fa
 	uct = 0
 	last_uid = ''
 	
+	date_field = '{}_date'.format(date_type)
+	from_field = 'from_{}'.format(date_type)
+
 	hmm_master[klass] = pd.DataFrame()
 
-	for idx in hmmdf.ix[hmmdf.target==klass,:].index:
+
+	for idx in hmmdf.ix[(hmmdf.target==klass) & (hmmdf[from_field].notnull()),:].index:
 
 		uid = hmmdf.ix[idx,'user_id']
 		
 		if uid != last_uid:
 			ct += 1
 			last_uid = uid
-			current = pd.to_datetime('2016-01-01')
+			# for healthy class, we need to set a date range since there's no diagnosis/event date
+			# we end at current_date_str and go back 2*offset
+			current_date_str = '2016-01-01'
+			current = pd.to_datetime(current_date_str)
 			
-			diag = pd.to_datetime(hmmdf.ix[idx,'diag_date'])
+			diag = pd.to_datetime(hmmdf.ix[idx,date_field])
 			hmm_oneuser = hmmdf.ix[hmmdf.user_id==uid, :].copy()
 
-			if klass == 1:
-				ts = hmm_oneuser.ix[:,[key_var,'from_diag']].copy()
+			if klass == 1: #target
+				ts = hmm_oneuser.ix[:,[key_var,from_field]].copy()
 				ts.index = pd.to_datetime(hmm_oneuser.created_date)
-				ts['from_point'] = ts.from_diag
-				mask = (ts.index > diag-pd.DateOffset(365)) & (ts.index < diag+pd.DateOffset(365))
-			else:
-				ts = hmm_oneuser.ix[:,[key_var,'created_date','LabMT_happs']].copy()
+				ts['from_point'] = ts[from_field]
+				mask = (ts.index > diag-pd.DateOffset(offset)) & (ts.index < diag+pd.DateOffset(offset))
+			else: #healthy
+				ts = hmm_oneuser.ix[:,[key_var,'created_date']].copy()
 				ts.index = pd.to_datetime(hmm_oneuser.created_date)
 				ts['from_point'] = (ts.index-current).days
-				mask = (ts.from_point > -365*2)
+				# target class goes offset-many-days forw and back from diag_date, so we double offset back here
+				mask = (ts.from_point > offset*-2) 
  
 			ts['rmean'] = ts[key_var].rolling(roll).mean()
 			ts2 = ts.loc[mask]
 		
 			if klass == 0:
-				ts2.from_point = ts2.from_point + 365
+				ts2.from_point = ts2.from_point + offset # cosmetic offset to match up with target class x-axis
 				
 			hmm_master[klass] = pd.concat([hmm_master[klass],ts2])
 
