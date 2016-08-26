@@ -12,7 +12,7 @@
   
 **Analysis**
 <ul>
-<li><tt>eda-instagram</tt> and tt>eda-twitter</tt> are the analytical frames except for Bayesian stuff</li>
+<li><tt>eda-instagram</tt> and <tt>eda-twitter</tt> are the analytical frames except for Bayesian stuff</li>
 <li><tt>*-bayes.R</tt> for Bayesian logistic regression and convergence checks</li>
 <li><tt>bgfunc</tt> contains all the heavy lifting for analysis and processing</li>
 <li><tt>face-detection</tt> compiles, trains, and verifies face detection algo</li>
