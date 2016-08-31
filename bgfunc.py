@@ -328,19 +328,19 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 						'full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
 								 'from_diag','from_susp','before_diag','before_susp', 
-								 'created_date','diag_date','event_date','from_event', 'LIWC_happs'] + LIWC_vars,
+								 'created_date','diag_date','LIWC_happs'] + LIWC_vars,
 						'no_addtl_full':['tweet_id', 'user_id', 'LabMT_happs', 'ANEW_happs', 'ANEW_arousal', 'ANEW_dominance',
 								 'time_unit', 'tweet_count', 'word_count', 'has_url', 'is_rt', 'is_reply', 'target',
 								 'from_diag','from_susp','before_diag','before_susp', 
-								 'created_date','diag_date','event_date','from_event', 'LIWC_happs'] + LIWC_vars,
+								 'created_date','diag_date','LIWC_happs'] + LIWC_vars,
 						}
 				}
 					
 			},
 			'fields_to_merge':{
 				'tw':{
-					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date','event_date','from_event'],
-					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date','event_date','from_event'],
+					'weekly':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
+					'created_date':	['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count','from_diag','from_susp','before_diag','before_susp','created_date','diag_date'],
 					'user_id':		['user_id','has_url','is_rt','is_reply','target','text','tweet_count','word_count']
 					},
 				'ig':{}
@@ -377,6 +377,7 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'has_test':has_test 
 		}
 
+	# additional_data flag means ratings data should be included, so we add those vars to the aggregation dict
 	if (platform == 'ig') and additional_data:
 		params['agg_func'][platform]['post'].update(			
 			{'rater_id':	'count',
@@ -404,7 +405,8 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 			'description':	'__|__'.join}
 		)
 
-	if condition in ['ptsd','pregnancy']:
+	# add event_date to aggregation vars for trauma (PTSD), conception (preg)
+	if condition in ['ptsd','pregnancy']: 
 		if platform == 'tw':
 			params['agg_func'][platform]['weekly'].update(			
 				{'event_date':	'first',
@@ -414,6 +416,11 @@ def define_params(condition, test_name, test_cutoff, impose_cutoff,
 				{'event_date':	'first',
 				'from_event':	'first'}
 			)
+			for gbt in ['created_date','weekly']:
+				params['vars'][platform][gbt]['full'].extend(['event_date','from_event'])
+				params['vars'][platform][gbt]['no_addtl_full'].extend(['event_date','from_event'])
+				params['fields_to_merge'][platform][gbt].extend(['event_date','from_event'])
+
 		elif platform == 'ig':
 			params['agg_func'][platform]['created_date'].update(			
 				{'event_date':	'first',
@@ -497,7 +504,10 @@ def urls_per_user(data, local_params):
 	all_url_ct = pd.concat([targ_url_ct,control_url_ct])
 	return targ_url_ct, control_url_ct, all_url_ct
 
+
 def urls_rated_by_pop(data, local_params):
+	''' Count of number of rated photos, per target/control samples 
+		Called by get_descriptives() '''
 
 	post_unit = local_params['post']
 
@@ -505,7 +515,10 @@ def urls_rated_by_pop(data, local_params):
 	t = data['target']['ratings'][post_unit].unique().shape[0]
 	return (c,t)
 
+
 def subj_data_by_pop(data, target, platform, local_params, conn):
+	''' Gets descriptive data for study participants, grouped by target/control 
+		Called by get_descriptives() '''
 
 	locus = local_params['locus']
 	user_unit = local_params['user']
@@ -540,8 +553,6 @@ def subj_data_by_pop(data, target, platform, local_params, conn):
 			d = pd.read_sql_query(q,conn)
 			d.drop_duplicates(subset=[user_unit], inplace=True)
 			
-			#if target == 'ptsd':
-			#	d.diag_date = d.diag_date.apply(lambda x: '-'.join([x[0:4],x[4:6],x[6:]]))
 			d.dropna(subset=['diag_date'], inplace=True)
 			
 			output['target']['femprop'] = None
@@ -551,8 +562,12 @@ def subj_data_by_pop(data, target, platform, local_params, conn):
 			perc_within_2013_2015 = ct_within_2013_2015/float(ts.shape[0])
 			output['target']['perc_diag_within_13_15'] = round(perc_within_2013_2015,2)
 			
-		age = pd.Series(2016 - d.year_born)
-		output[pop]['age'] = {'min':age.min(),'max':age.max(),'mean':round(age.mean(),2),'std':round(age.std(),2)}
+		current_year = datetime.datetime.now().year
+		age = pd.Series(current_year - d.year_born) 
+		output[pop]['age'] = {'min':age.min(),
+							  'max':age.max(),
+							  'mean':round(age.mean(),2),
+							  'std':round(age.std(),2)}
 
 	return output
 
@@ -572,7 +587,7 @@ def get_descriptives(data, target, platform, additional_data, conn, return_outpu
 
 	ct['target'], ct['control'], post_ct = urls_per_user(data,local_params)
 
-	if additional_data: # instagram only
+	if additional_data: # instagram only, additional_data means ratings
 		urls_rated_c, urls_rated_t = urls_rated_by_pop(data,local_params)
 	
 	if doPrint:
@@ -717,15 +732,8 @@ def get_additional_data(data, params, platform, condition, pop, pop_long,
 
 		d2 = get_meta(params, conn, pop)
 		
-		if doPrint:
-			print 'Number of users: get_meta yes addtl get_additional_data ::', d2.username.unique().shape[0]
-			print d2.username.unique()
-		
 		# Now merge the meta_ig data with the photo_ratings_depression data
 		consolidate_data(d2, d, platform, pop_long, kind, data)
-		
-		if doPrint:
-			print 'Number of users: consolidate_date yes addtl get_additional_data ::', data[pop_long][kind].username.unique().shape[0]
 
 		if doPrint:
 			# Hunting for ratings errors
@@ -755,23 +763,13 @@ def get_additional_data(data, params, platform, condition, pop, pop_long,
 		# And now merge ratings data with hsv data
 		consolidate_data(data[pop_long][kind], data[pop_long]['hsv'], platform, pop_long, 'all', data)
 
-		if doPrint:
-			print 'Number of users: second consolidate yes addtl data get_addtl_data ::', data[pop_long]['all'].username.unique().shape[0]
 	else:
 		d = data[pop_long]['hsv']
 		d2 = get_meta(params, conn, pop)
 		tmp = d2.copy()
 		
-		if doPrint:
-			print 'Number of users: get_meta no addtl get_additional_data ::', d2.username.unique().shape[0]
-		
 		# Now merge the meta_ig data with the photo_ratings_depression data
 		consolidate_data(d2, d, platform, pop_long, 'all', data)
-		
-		if doPrint:
-			print 'Number of users: consolidate_data no addtl get_additional_data ::', data[pop_long]['all'].username.unique().shape[0]
-			print 'usernames from meta_ig that did not pass the merge between hsv and meta_ig:'
-			print tmp.username[~tmp.username.isin(data[pop_long]['all'].username)].unique()
 
 	if include_filter:
 		data[pop_long]['all']['has_filter'] = 1
@@ -803,6 +801,19 @@ def cut_low_posters(data, pop_long, std_frac=0.5, doPrint=True):
 	data[pop_long]['all'] = df.ix[df.user_id.isin(new_ids),:].copy()
 
 
+def convert_field_to_float(x):
+	''' Some fields are empty string in db but need to be None objects '''
+	if (x == '') | (x == 'None'):
+		return None
+	elif x == None:
+		return x
+	else:
+		try:
+			return float(x)
+		except:
+			print 'FAILED ON:', x
+
+
 def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods, turn_points, 
 					 post_event=False, posting_cutoff=False, additional_data=False, 
 					 include_filter=True, limit_date_range=False):
@@ -825,17 +836,6 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 			
 		if posting_cutoff and (platform == 'ig'):
 			cut_low_posters(data, pop_long)
-
-		def convert_field_to_float(x):
-			if (x == '') | (x == 'None'):
-				return None
-			elif x == None:
-				return x
-			else:
-				try:
-					return float(x)
-				except:
-					print 'FAILED ON:', x
 					
 		# aug 11 2016: database diag_date for all conditions but depression are of form "YYYYMMDD"
 		# but we need "YYYY-MM-DD". this line converts them.  should just update db register eventually.
@@ -845,14 +845,23 @@ def prepare_raw_data(data, platform, params, conn, gb_types, condition, periods,
 			elif platform == 'tw':
 				dset = 'tweets'
 
-			#print 'platform:', platform, 'dset:', dset
-			#print data[pop_long][dset].diag_date.unique()
-
 			#if pop == 't':
-			#    	data[pop_long][dset].diag_date = data[pop_long][dset].diag_date.apply(lambda x: '-'.join([x[0:4],x[4:6],x[6:]]))
+			#        data[pop_long][dset].diag_date = data[pop_long][dset].diag_date.apply(lambda x: '-'.join([x[0:4],x[4:6],x[6:]]))
 			for date_type in ['diag','event']:
-				field = 'from_{}'.format(date_type,condition)
+				field = 'from_{}'.format(date_type)
 				data[pop_long][dset][field] = data[pop_long][dset][field].apply(convert_field_to_float)
+
+				if pop_long == 'control':
+					field2 = '{}_date'.format(date_type)
+					data[pop_long][dset][field] = data[pop_long][dset][field].astype(float)
+					try:
+						data[pop_long][dset][field2] = data[pop_long][dset][field2].astype(float)
+					except Exception, e:
+						print 'ERROR in prepare_raw_data with making control dtypes floats:'
+						print str(e)
+						a = data[pop_long][dset].apply(lambda x: (x['user_id'], x[field2]) if x[field2] is not None else (None,None))
+						a = pd.Series(a)
+						print a.dropna()
 
 
 		# aggregate data by groupby types (url, username, created_date)
@@ -964,7 +973,7 @@ def fix_has_url(df, doPrint=True):
 
 
 def add_is_reply(df, doPrint=True):
-	''' 'is_reply' field, a la DeChoudhury, that looks to see whether there's an @ tag in the tweet '''
+	''' 'is_reply' field looks to see whether there's an @ tag in the tweet '''
 
 	print 'Adding reply tags...'
 	df['is_reply'] = 0
@@ -1009,7 +1018,8 @@ def fix_from_counts(d):
 
 
 def hourly_plot(conn, condition):
-	''' Makes plot of aggregated hourly post data (used mainly for Twitter comparison against De Choudhury) '''
+	''' Makes plot of aggregated hourly post data (used mainly for Twitter comparison against De Choudhury) 
+		WARNING: Use this function with care, it overwrites meta_tw and causes strange behavior that is not fixed! '''
 	
 	tz, tups = to_localtime_wrapper(conn, condition)
 
@@ -1039,12 +1049,9 @@ def hourly_plot(conn, condition):
 		else:
 			return x
 
-	#hastime['local_time'] = hastime.local_time.apply(make_time_obj)
-
 	q = "select username from control where platform = 'twitter' and {}='No'".format(condition)
 	c_unames = pd.read_sql_query(q, conn)
 
-	#target_indicator = 'd_from_diag_{}'.format(condition)
 	fields = ['username','local_time']
 
 	hastime_target = hastime.ix[hastime.ddate.notnull(), fields]
@@ -1064,9 +1071,7 @@ def get_tweet_metadata(data, m, params, conn, pop, pop_long, limit_date_range=Fa
 	''' Collects all Twitter metadata for a given population, and does some cleaning.
 		If limit_date_range == True, then posts are limited to within maxback/maxfor days.
 		For target populations, these limits are based on diag/susp date. 
-		For control populations, limits extend back from present day (although they should really start 
-		from the date they were collected...at some point we will be much father into the future than 
-		the last date we collected their data!'''
+		For control populations, limits extend back from 01 Jan 2016 '''
 
 	unames = get_pop_unames(params, m, conn, pop)
 	meta = get_meta(params, conn, pop, doPrint)
@@ -1715,7 +1720,7 @@ def importance_wrapper(fits, ctype, model_feats, title, condition, tall_plot=Fal
 	major_formatter = FuncFormatter(drop_leading_zero_formatter)
 	ax.xaxis.set_major_formatter(major_formatter)
 	plt.xticks(fontsize=10)
-	plt.title("Top {} predictors ({})".format(condition.capitalize(),title), fontsize=16)
+	plt.title("Top {} predictors ({})".format(condition.upper(),title), fontsize=16)
 	plt.show()
 
 
@@ -2309,7 +2314,7 @@ def master_actions(master, target, control, condition, m, params, gb_type,
 					'platform':m,
 					'test_size':.3, # test split for train/test
 					'acc_avg':'binary',
-					'best_pca_num_comp':aparams['best_pca'], # opt: 69 for tw-MAIN-created_date, but 2 works also!
+					'best_pca_num_comp':aparams['best_pca'], 
 					'show_pca_comp_plot':aparams['show_pca_comp_plot'],
 					'kernel':'rbf', # for SVC, not used anymore
 					'tall_plot':aparams['tall_plot'],
@@ -2455,7 +2460,6 @@ def all_features(data, tunit, condition):
 	result['ANEW_happs'] = happs
 	result['ANEW_arousal'] = my_ANEW.score(word_dict,idx=3)
 	result['ANEW_dominance'] = my_ANEW.score(word_dict,idx=5)
-	
 
 	# make a word vector
 	my_word_vec = my_LIWC.wordVecify(word_dict)
@@ -2495,13 +2499,6 @@ def create_word_feats(df, tunit, condition, conn, write_to_db=False, testing=Fal
 		feats_to_write = [feat for feat in df['word_feats'][tunit].columns if feat in table_fields.values ]
 		word_features = "(" + ",".join(feats_to_write) + ")"
 		q = 'insert or ignore into word_features{} values ('.format(word_features) + ",".join(['?']*len(feats_to_write)) +")"
-		#testingprint 'current cols:'
-		#print df['word_feats'][tunit].columns
-		#print
-		#print 'table fields:'
-		#print table_fields
-		#print
-		#print q
 		vals = [tuple(x) for x in df['word_feats'][tunit].values]
 
 		with conn:
@@ -2594,6 +2591,7 @@ def get_local_time_data(metatw, tz):
 	metatw['local_time'] = metatw.local_timestamp.apply(get_time_only)
 
 def tag_insomnia(x):
+	''' See De Choudhury et al (2013)...details are based on the metric they created '''
 	
 	insomnia_start = datetime.datetime.strptime("21:00:00","%H:%M:%S").time()
 	insomnia_end = datetime.datetime.strptime("06:00:00","%H:%M:%S").time()
@@ -2977,7 +2975,7 @@ def compare_hmm_means(hmm, hmmdf, cols, compare_source, state=0, decision=0.5, K
 				print
 				print 't = {}, p = {}'.format(test.statistic,test.pvalue)
 				print
-				print 'According to logistic regression, this variable should be {} for depressed class.'.format(impact.upper())
+				print 'According to logistic regression, this variable should be {} for affected class.'.format(impact.upper())
 				print
 			diff = hmm_means[state].mean() - hmm_means[antistate].mean()
 			if (diff < 1) and (sway < 0):
@@ -3003,7 +3001,6 @@ def compare_hmm_means(hmm, hmmdf, cols, compare_source, state=0, decision=0.5, K
 def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass, 
 						  date_type='diag', offset=365, roll=90, doPrint=False):
 	
-	roll = 90
 	ct = 0
 	color_ct = 0
 	uct = 0
@@ -3014,8 +3011,13 @@ def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass,
 
 	hmm_master[klass] = pd.DataFrame()
 
-
-	for idx in hmmdf.ix[(hmmdf.target==klass) & (hmmdf[from_field].notnull()),:].index:
+	if klass == 1:
+		# notnull() condition because some ptsd/preg will not have event_date
+		mask = (hmmdf.target==klass) & (hmmdf[date_field].notnull())
+	else:
+		mask = (hmmdf.target==klass)
+		
+	for idx in hmmdf.loc[mask].index:
 
 		uid = hmmdf.ix[idx,'user_id']
 		
@@ -3029,13 +3031,16 @@ def prepare_hmm_plot_data(hmmdf, hmm_master, key_var, klass,
 			
 			diag = pd.to_datetime(hmmdf.ix[idx,date_field])
 			hmm_oneuser = hmmdf.ix[hmmdf.user_id==uid, :].copy()
-
+			
 			if klass == 1: #target
+				
 				ts = hmm_oneuser.ix[:,[key_var,from_field]].copy()
 				ts.index = pd.to_datetime(hmm_oneuser.created_date)
 				ts['from_point'] = ts[from_field]
 				mask = (ts.index > diag-pd.DateOffset(offset)) & (ts.index < diag+pd.DateOffset(offset))
+				
 			else: #healthy
+				
 				ts = hmm_oneuser.ix[:,[key_var,'created_date']].copy()
 				ts.index = pd.to_datetime(hmm_oneuser.created_date)
 				ts['from_point'] = (ts.index-current).days
