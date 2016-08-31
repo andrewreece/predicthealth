@@ -381,7 +381,8 @@ def add_monthnum(conn):
 
 
 def count_days_from_turning_point(conn, condition, medium_abbr):
-
+	''' Makes a new count variable: number of days from target date (diagnosis, trauma, conception, etc) '''
+	
 	table_name = 'meta_'+medium_abbr
 
 	query = ("SELECT DISTINCT platform, {cond}.username, diag_day, diag_monthnum, diag_year, days_suspected ".format(cond=condition) + 
@@ -415,6 +416,7 @@ def count_days_from_turning_point(conn, condition, medium_abbr):
 		# if days suspected is '60+', we enter a None value, otherwise compute the suspected date
 		if dsusp and str(dsusp)[-1]!='+':
 			try:
+				dsusp = re.sub(',','',dsusp)
 				sdate_obj = ddate_obj - datetime.timedelta(days=dsusp)
 				dates['susp'] = sdate_obj.strftime('%Y-%m-%d')
 			except Exception, e:
