@@ -113,12 +113,3 @@ for condition in conditions:
 			print 'Finished {med} {c} {dt}'.format(med=med, c=condition, dt=date_type)
 
 
-
-
-query = "select d_from_diag_pregnancy, d_from_susp_pregnancy, created_date from meta_tw where username='willow_marx'"
-with conn:
-	cur = conn.cursor()
-	cur.execute(query)
-	rows = cur.fetchall()
-for r in rows:
-	print r
